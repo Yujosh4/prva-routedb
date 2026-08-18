@@ -1,0 +1,55 @@
+name: Nightly Supabase Backup
+
+on:
+  schedule:
+    - cron: "0 18 * * *" # 18:00 UTC / 02:00 PHT
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Dump database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          mkdir -p dump
+          pg_dump "$SUPABASE_DB_URL" | gzip > "dump/routedb-$(date -u +%F).sql.gz"
+
+      - name: Checkout backup repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.BACKUP_REPO }}
+          token: ${{ secrets.BACKUP_REPO_TOKEN }}
+          path: backup-repo
+
+      - name: Commit snapshot, prune anything older than 60 days
+        run: |
+          mv dump/*.sql.gz backup-repo/
+          cd backup-repo
+          find . -maxdepth 1 -name "routedb-*.sql.gz" -mtime +60 -delete
+          git config user.name "prva-routedb-backup-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add .
+          git diff --cached --quiet || git commit -m "Nightly Route DB backup $(date -u +%F)"
+          git push
+
+      - name: Notify Discord on failure
+        if: failure()
+        run: |
+          curl -sf -X POST -H "Content-Type: application/json" \
+            -d '{"content": "⚠️ Route DB nightly backup failed -- check the Actions log."}' \
+            "${{ secrets.DISCORD_BACKUP_WEBHOOK_URL }}" || true
+
+# Before this can run, four repo secrets need to be added (Settings -> Secrets
+# and variables -> Actions), none of which exist yet:
+#   SUPABASE_DB_URL          Postgres connection string from Project Settings -> Database
+#   BACKUP_REPO              e.g. "Yujosh4/prva-routedb-backups" -- a small private repo
+#                             created just to hold nightly dumps (separate from this repo
+#                             on purpose, so a bad push here can't touch the backups)
+#   BACKUP_REPO_TOKEN        a GitHub PAT (fine-grained, contents: write) scoped to that repo
+#   DISCORD_BACKUP_WEBHOOK_URL   optional -- reuses the same webhook pattern as the
+#                             marketing site's join-form notification

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Active Route | Philippine Airlines Virtual</title>
+<meta name="description" content="Track the route you've committed to fly next via SimBrief.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="rn-header">
+  <div class="section-inner">
+    <a href="index.html" class="rn-brand">
+      <strong>PRVA</strong>
+      <span>Route Network</span>
+    </a>
+    <nav>
+      <a href="index.html">Browse Routes</a>
+      <a href="https://ifphilippineairlinesvirtual.netlify.app">Main Site</a>
+    </nav>
+  </div>
+</header>
+
+<section class="rn-intro">
+  <div class="section-inner">
+    <h1>Your active routes.</h1>
+    <p>Every route you've committed to fly via "Fly This Route," tracked on this browser. Once Crew Center is live, this moves to your pilot account instead.</p>
+  </div>
+</section>
+
+<section class="rn-grid-wrap">
+  <div class="section-inner">
+    <div class="rn-grid" id="rnActiveGrid">
+      <div class="rn-empty">Loading…</div>
+    </div>
+  </div>
+</section>
+
+<footer class="rn-footer">
+  <div class="section-inner">
+    <span>&copy; 2026 Philippine Airlines Virtual.</span>
+    <span>Not affiliated with the real-world Philippine Airlines.</span>
+  </div>
+</footer>
+
+<script type="module" src="js/active.js"></script>
+</body>
+</html>
