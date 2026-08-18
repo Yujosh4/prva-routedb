@@ -151,7 +151,10 @@ function routeCardHtml(route) {
   return `
     <article class="rn-card" data-id="${escapeHtml(route.id)}">
       <div class="rn-card-top">
-        <span class="rn-flight-num">${escapeHtml(route.flight_number)}</span>
+        <span class="rn-flight-num">
+          ${airline?.logo_url ? `<img class="rn-airline-logo" src="${escapeHtml(airline.logo_url)}" alt="${escapeHtml(airline.name)}">` : ""}
+          ${escapeHtml(route.flight_number)}
+        </span>
         ${isCodeshare ? `<span class="rn-codeshare-badge">${escapeHtml(airline.name)}</span>` : ""}
         ${route.category === "historic" ? `<span class="rn-codeshare-badge">Historic</span>` : ""}
       </div>
@@ -235,7 +238,10 @@ function openModal(route) {
         <div><dt>Aircraft</dt><dd>${escapeHtml((route.aircraft_types || []).join(", ") || "—")}</dd></div>
         <div><dt>Distance</dt><dd>${route.distance_nm ? `${Math.round(route.distance_nm)} nm` : "—"}</dd></div>
         <div><dt>Flight Time</dt><dd>${formatTime(route.flight_time_minutes)}</dd></div>
-        <div><dt>Airline</dt><dd>${route.airline ? escapeHtml(route.airline.name) : "—"}</dd></div>
+        <div><dt>Airline</dt><dd>
+          ${route.airline?.logo_url ? `<img class="rn-airline-logo" src="${escapeHtml(route.airline.logo_url)}" alt="">` : ""}
+          ${route.airline ? escapeHtml(route.airline.name) : "—"}
+        </dd></div>
         <div><dt>Livery</dt><dd>${escapeHtml((route.liveries || []).join(", ") || "—")}</dd></div>
         <div><dt>Category</dt><dd>${route.category === "historic" ? "Historic" : "Current"}</dd></div>
       </dl>

@@ -150,7 +150,9 @@ button{ font-family: inherit; }
   align-items: center;
   justify-content: space-between;
 }
-.rn-flight-num{ font-size: 13px; font-weight: 700; color: var(--red-600); letter-spacing: .02em; }
+.rn-flight-num{ font-size: 13px; font-weight: 700; color: var(--red-600); letter-spacing: .02em; display: inline-flex; align-items: center; gap: 6px; }
+.rn-airline-logo{ height: 18px; width: auto; max-width: 60px; object-fit: contain; vertical-align: middle; }
+.rn-detail-grid .rn-airline-logo{ height: 22px; margin-right: 6px; }
 .rn-codeshare-badge{
   font-size: 11px;
   font-weight: 600;

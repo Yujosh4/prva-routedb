@@ -62,7 +62,9 @@ createAirlineBtn.addEventListener("click", async () => {
   const is_mainline = newAirlineMainline.checked;
   const { data, error } = await supabase.from("airlines").insert({ name, logo_url, is_mainline }).select().single();
   if (error) {
-    airlineStatus.textContent = "Couldn't create airline: " + error.message;
+    airlineStatus.textContent = error.message.includes("one_mainline_airline")
+      ? "Only one airline can be marked mainline, and one already is. Leave the mainline box unchecked for a codeshare or subsidiary brand."
+      : "Couldn't create airline: " + error.message;
     airlineStatus.className = "rn-sb-status error";
     return;
   }
