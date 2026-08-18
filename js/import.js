@@ -111,6 +111,16 @@ function parseFlightTimeToMinutes(value) {
     return value.getHours() * 60 + value.getMinutes();
   }
   const str = String(value).trim();
+
+  // A range like "0:45 - 1:15" (variable block time on short-haul routes) --
+  // average the two ends rather than failing to parse.
+  const range = str.match(/^(\d{1,2}):(\d{2})\s*[-–—]\s*(\d{1,2}):(\d{2})$/);
+  if (range) {
+    const start = parseInt(range[1], 10) * 60 + parseInt(range[2], 10);
+    const end = parseInt(range[3], 10) * 60 + parseInt(range[4], 10);
+    return Math.round((start + end) / 2);
+  }
+
   const m = str.match(/^(\d{1,2}):(\d{2})$/);
   if (m) return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
   const num = Number(str);
