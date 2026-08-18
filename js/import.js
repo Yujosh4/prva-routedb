@@ -176,6 +176,13 @@ async function parseSheet(sheetName) {
   return parsed;
 }
 
+function formatMinutes(minutes) {
+  if (minutes == null) return "—";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
 function renderPreview(rows) {
   const validCount = rows.filter((r) => r.errors.length === 0).length;
   previewSummary.innerHTML = `<strong>${rows.length}</strong> rows parsed, <strong>${validCount}</strong> ready to import${
@@ -192,7 +199,7 @@ function renderPreview(rows) {
         <td>${r.destination_icao || "—"}</td>
         <td>${r.aircraft_types.join(", ") || "—"}</td>
         <td>${r.liveries.join(", ") || "—"}</td>
-        <td>${r.flight_time_minutes != null ? r.flight_time_minutes + "m" : "—"}</td>
+        <td>${formatMinutes(r.flight_time_minutes)}</td>
         <td>${r.distance_nm != null ? r.distance_nm + " nm" : "—"}</td>
         <td>${r.errors.join("; ")}</td>
       </tr>`
