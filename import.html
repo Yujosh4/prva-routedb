@@ -56,6 +56,13 @@
         <label for="newAirlineLogo">Tail logo (optional)</label>
         <input type="file" id="newAirlineLogo" accept="image/*">
       </div>
+      <div class="imp-field" style="flex:0 0 auto;">
+        <label style="visibility:hidden;">Mainline</label>
+        <label style="display:flex; align-items:center; gap:6px; font-weight:400; padding-top:10px;">
+          <input type="checkbox" id="newAirlineMainline" style="width:auto;">
+          This is PRVA's own mainline (not a codeshare partner)
+        </label>
+      </div>
       <button type="button" class="btn btn-outline" id="createAirlineBtn" style="flex:0 0 auto;">Create Airline</button>
     </div>
     <div class="rn-sb-status" id="airlineStatus"></div>

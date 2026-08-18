@@ -6,6 +6,7 @@ await requireStaffSession();
 const airlineSelect = document.getElementById("airlineSelect");
 const newAirlineName = document.getElementById("newAirlineName");
 const newAirlineLogo = document.getElementById("newAirlineLogo");
+const newAirlineMainline = document.getElementById("newAirlineMainline");
 const createAirlineBtn = document.getElementById("createAirlineBtn");
 const airlineStatus = document.getElementById("airlineStatus");
 
@@ -23,13 +24,15 @@ let parsedRows = []; // includes both valid and invalid rows, for the preview ta
 
 // ---------- Airlines ----------
 async function loadAirlines(selectId) {
-  const { data, error } = await supabase.from("airlines").select("id, name").order("name");
+  const { data, error } = await supabase.from("airlines").select("id, name, is_mainline").order("name");
   if (error) {
     airlineStatus.textContent = "Couldn't load airlines: " + error.message;
     airlineStatus.className = "rn-sb-status error";
     return;
   }
-  airlineSelect.innerHTML = data.map((a) => `<option value="${a.id}">${a.name}</option>`).join("");
+  airlineSelect.innerHTML = data
+    .map((a) => `<option value="${a.id}">${a.name}${a.is_mainline ? " (Mainline)" : ""}</option>`)
+    .join("");
   if (selectId) airlineSelect.value = selectId;
 }
 
@@ -56,7 +59,8 @@ createAirlineBtn.addEventListener("click", async () => {
     logo_url = supabase.storage.from("airline-logos").getPublicUrl(path).data.publicUrl;
   }
 
-  const { data, error } = await supabase.from("airlines").insert({ name, logo_url }).select().single();
+  const is_mainline = newAirlineMainline.checked;
+  const { data, error } = await supabase.from("airlines").insert({ name, logo_url, is_mainline }).select().single();
   if (error) {
     airlineStatus.textContent = "Couldn't create airline: " + error.message;
     airlineStatus.className = "rn-sb-status error";
@@ -66,6 +70,7 @@ createAirlineBtn.addEventListener("click", async () => {
   airlineStatus.className = "rn-sb-status success";
   newAirlineName.value = "";
   newAirlineLogo.value = "";
+  newAirlineMainline.checked = false;
   await loadAirlines(data.id);
 });
 
