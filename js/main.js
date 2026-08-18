@@ -7,6 +7,8 @@ const searchInput = document.getElementById("rnSearch");
 const originSelect = document.getElementById("rnOriginFilter");
 const destinationSelect = document.getElementById("rnDestinationFilter");
 const aircraftSelect = document.getElementById("rnAircraftFilter");
+const airlineSelect = document.getElementById("rnAirlineFilter");
+const categorySelect = document.getElementById("rnCategoryFilter");
 const modalOverlay = document.getElementById("rnModalOverlay");
 const modalClose = document.getElementById("rnModalClose");
 const modalBody = document.getElementById("rnModalBody");
@@ -14,43 +16,61 @@ const modalBody = document.getElementById("rnModalBody");
 let allRoutes = [];
 let usingSampleData = false;
 
-// Shown only when Supabase isn't configured yet (js/config.js is blank), so the
-// UI is visually verifiable before the real project/schema exist. Same shape
-// the live Supabase query below returns, so nothing else needs to change once
-// real credentials land in config.js.
+// Shown only when Supabase isn't configured yet, so the UI stays visually
+// verifiable without a live project. Same shape the real Supabase query
+// below returns, so nothing else needs to change once it's live.
 const SAMPLE_ROUTES = [
   {
     id: "sample-1",
-    flight_number: "PR 103",
+    flight_number: "PR103",
     distance_nm: 1339,
     flight_time_minutes: 195,
     aircraft_types: ["A321", "A320"],
+    liveries: ["Philippine Airlines"],
+    category: "current",
     active: true,
     origin: { icao: "RPLL", iata: "MNL", name: "Ninoy Aquino International", city: "Manila" },
     destination: { icao: "RPVM", iata: "CEB", name: "Mactan-Cebu International", city: "Cebu" },
-    codeshare_partners: null,
+    airline: { name: "Philippine Airlines", logo_url: null, is_mainline: true },
   },
   {
     id: "sample-2",
-    flight_number: "PR 501",
+    flight_number: "PR501",
     distance_nm: 6923,
     flight_time_minutes: 855,
     aircraft_types: ["A350-900"],
+    liveries: ["Philippine Airlines"],
+    category: "current",
     active: true,
     origin: { icao: "RPLL", iata: "MNL", name: "Ninoy Aquino International", city: "Manila" },
     destination: { icao: "KLAX", iata: "LAX", name: "Los Angeles International", city: "Los Angeles" },
-    codeshare_partners: null,
+    airline: { name: "Philippine Airlines", logo_url: null, is_mainline: true },
   },
   {
     id: "sample-3",
-    flight_number: "5J 1234",
+    flight_number: "PR102H (A)",
+    distance_nm: 2417,
+    flight_time_minutes: 340,
+    aircraft_types: ["MD-11", "DC-10"],
+    liveries: ["Philippine Airlines", "Generic"],
+    category: "historic",
+    active: true,
+    origin: { icao: "KSFO", iata: "SFO", name: "San Francisco International", city: "San Francisco" },
+    destination: { icao: "PHNL", iata: "HNL", name: "Daniel K. Inouye International", city: "Honolulu" },
+    airline: { name: "Philippine Airlines", logo_url: null, is_mainline: true },
+  },
+  {
+    id: "sample-4",
+    flight_number: "5J1234",
     distance_nm: 2417,
     flight_time_minutes: 320,
     aircraft_types: ["A330-300"],
+    liveries: ["STARLUX Virtual Airlines"],
+    category: "current",
     active: true,
     origin: { icao: "RPLL", iata: "MNL", name: "Ninoy Aquino International", city: "Manila" },
     destination: { icao: "RJTT", iata: "HND", name: "Tokyo Haneda", city: "Tokyo" },
-    codeshare_partners: { name: "STARLUX Virtual Airlines", logo_url: null },
+    airline: { name: "STARLUX Virtual Airlines", logo_url: null, is_mainline: false },
   },
 ];
 
@@ -63,10 +83,10 @@ async function loadRoutes() {
     const { data, error } = await supabase
       .from("routes")
       .select(
-        `id, flight_number, distance_nm, flight_time_minutes, aircraft_types, notes, active,
+        `id, flight_number, distance_nm, flight_time_minutes, aircraft_types, liveries, notes, active, category,
          origin:airports!routes_origin_icao_fkey(icao, iata, name, city),
          destination:airports!routes_destination_icao_fkey(icao, iata, name, city),
-         codeshare_partners(name, logo_url)`
+         airline:airlines(name, logo_url, is_mainline)`
       )
       .eq("active", true)
       .order("flight_number");
@@ -88,10 +108,12 @@ function populateFilterOptions(routes) {
   const origins = new Map();
   const destinations = new Map();
   const aircraft = new Set();
+  const airlines = new Set();
   routes.forEach((r) => {
     if (r.origin) origins.set(r.origin.icao, r.origin);
     if (r.destination) destinations.set(r.destination.icao, r.destination);
     (r.aircraft_types || []).forEach((t) => aircraft.add(t));
+    if (r.airline?.name) airlines.add(r.airline.name);
   });
 
   const fillSelect = (select, map, placeholder) => {
@@ -108,6 +130,10 @@ function populateFilterOptions(routes) {
     `<option value="">Any aircraft</option>`,
     ...[...aircraft].sort().map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`),
   ].join("");
+  airlineSelect.innerHTML = [
+    `<option value="">Any airline</option>`,
+    ...[...airlines].sort().map((a) => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`),
+  ].join("");
 }
 
 function formatTime(minutes) {
@@ -120,12 +146,14 @@ function formatTime(minutes) {
 function routeCardHtml(route) {
   const o = route.origin || {};
   const d = route.destination || {};
-  const codeshare = route.codeshare_partners;
+  const airline = route.airline;
+  const isCodeshare = airline && !airline.is_mainline;
   return `
     <article class="rn-card" data-id="${escapeHtml(route.id)}">
       <div class="rn-card-top">
         <span class="rn-flight-num">${escapeHtml(route.flight_number)}</span>
-        ${codeshare ? `<span class="rn-codeshare-badge">${escapeHtml(codeshare.name)}</span>` : ""}
+        ${isCodeshare ? `<span class="rn-codeshare-badge">${escapeHtml(airline.name)}</span>` : ""}
+        ${route.category === "historic" ? `<span class="rn-codeshare-badge">Historic</span>` : ""}
       </div>
       <div class="rn-route-line">
         <span class="rn-code">${escapeHtml(o.icao)}</span>
@@ -150,11 +178,15 @@ function applyFilters() {
   const origin = originSelect.value;
   const destination = destinationSelect.value;
   const aircraft = aircraftSelect.value;
+  const airline = airlineSelect.value;
+  const category = categorySelect.value; // "current" (default) | "historic" | ""(all)
 
   const filtered = allRoutes.filter((r) => {
+    if (category && r.category !== category) return false;
     if (origin && r.origin?.icao !== origin) return false;
     if (destination && r.destination?.icao !== destination) return false;
     if (aircraft && !(r.aircraft_types || []).includes(aircraft)) return false;
+    if (airline && r.airline?.name !== airline) return false;
     if (q) {
       const hay = [
         r.flight_number, r.origin?.icao, r.origin?.city, r.destination?.icao, r.destination?.city,
@@ -201,10 +233,13 @@ function openModal(route) {
       <h4>Flight Details</h4>
       <dl class="rn-detail-grid">
         <div><dt>Aircraft</dt><dd>${escapeHtml((route.aircraft_types || []).join(", ") || "—")}</dd></div>
-        <div><dt>Distance</dt><dd>${route.distance_nm ? `${route.distance_nm} nm` : "—"}</dd></div>
+        <div><dt>Distance</dt><dd>${route.distance_nm ? `${Math.round(route.distance_nm)} nm` : "—"}</dd></div>
         <div><dt>Flight Time</dt><dd>${formatTime(route.flight_time_minutes)}</dd></div>
-        <div><dt>Codeshare</dt><dd>${route.codeshare_partners ? escapeHtml(route.codeshare_partners.name) : "PRVA mainline"}</dd></div>
+        <div><dt>Airline</dt><dd>${route.airline ? escapeHtml(route.airline.name) : "—"}</dd></div>
+        <div><dt>Livery</dt><dd>${escapeHtml((route.liveries || []).join(", ") || "—")}</dd></div>
+        <div><dt>Category</dt><dd>${route.category === "historic" ? "Historic" : "Current"}</dd></div>
       </dl>
+      ${route.notes ? `<p style="margin-top:12px; font-size:13px; color:var(--muted);">${escapeHtml(route.notes)}</p>` : ""}
     </div>
 
     <div class="rn-modal-section">
@@ -311,7 +346,7 @@ modalClose.addEventListener("click", closeModal);
 modalOverlay.addEventListener("click", (e) => { if (e.target === modalOverlay) closeModal(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
 
-[searchInput, originSelect, destinationSelect, aircraftSelect].forEach((el) =>
+[searchInput, originSelect, destinationSelect, aircraftSelect, airlineSelect, categorySelect].forEach((el) =>
   el.addEventListener("input", applyFilters)
 );
 

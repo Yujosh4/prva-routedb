@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Import Routes | PRVA Route Network</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .imp-wrap{ max-width: 960px; margin: 0 auto; padding: 40px 28px 90px; }
+  .imp-section{ background: var(--white); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 20px; }
+  .imp-section h3{ font-size: 15px; margin-bottom: 14px; }
+  .imp-row{ display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+  .imp-field{ flex: 1 1 200px; }
+  .imp-field label{ display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+  .imp-field input, .imp-field select{ width: 100%; font-family: inherit; font-size: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); }
+  .imp-table-wrap{ overflow-x: auto; max-height: 420px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius-md); }
+  table.imp-table{ width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.imp-table th, table.imp-table td{ padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+  table.imp-table th{ background: var(--bg-soft); position: sticky; top: 0; }
+  tr.imp-row-error{ background: #fdf1f2; color: var(--red-600); }
+  .imp-summary{ font-size: 13px; color: var(--muted); margin: 12px 0; }
+  .imp-summary strong{ color: var(--ink); }
+</style>
+</head>
+<body>
+
+<header class="rn-header">
+  <div class="section-inner">
+    <a href="index.html" class="rn-brand"><strong>PRVA</strong><span>Route Network -- Staff</span></a>
+    <nav>
+      <a href="index.html">Browse Routes</a>
+      <a href="#" id="logoutLink">Log Out</a>
+    </nav>
+  </div>
+</header>
+
+<div class="imp-wrap">
+  <h1 style="margin:32px 0 6px; font-size:26px;">Import Routes</h1>
+  <p style="color:var(--muted); margin-bottom:28px;">Upload a route spreadsheet, pick which airline it belongs to, review the parsed rows, then confirm.</p>
+
+  <div class="imp-section">
+    <h3>1. Airline</h3>
+    <div class="imp-row">
+      <div class="imp-field">
+        <label for="airlineSelect">Import these routes under</label>
+        <select id="airlineSelect"></select>
+      </div>
+      <div class="imp-field">
+        <label for="newAirlineName">Or create a new airline</label>
+        <input type="text" id="newAirlineName" placeholder="e.g. STARLUX Virtual Airlines">
+      </div>
+      <div class="imp-field">
+        <label for="newAirlineLogo">Tail logo (optional)</label>
+        <input type="file" id="newAirlineLogo" accept="image/*">
+      </div>
+      <button type="button" class="btn btn-outline" id="createAirlineBtn" style="flex:0 0 auto;">Create Airline</button>
+    </div>
+    <div class="rn-sb-status" id="airlineStatus"></div>
+  </div>
+
+  <div class="imp-section">
+    <h3>2. Spreadsheet</h3>
+    <div class="imp-row">
+      <div class="imp-field">
+        <label for="fileInput">Route spreadsheet (.xlsx)</label>
+        <input type="file" id="fileInput" accept=".xlsx,.xls">
+      </div>
+      <div class="imp-field">
+        <label for="sheetSelect">Sheet</label>
+        <select id="sheetSelect" disabled><option>Upload a file first</option></select>
+      </div>
+      <div class="imp-field">
+        <label for="categorySelect">Category</label>
+        <select id="categorySelect">
+          <option value="current">Current</option>
+          <option value="historic">Historic</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="imp-section">
+    <h3>3. Preview</h3>
+    <div class="imp-summary" id="previewSummary">Upload a spreadsheet and pick a sheet to see a preview here.</div>
+    <div class="imp-table-wrap" id="previewTableWrap"></div>
+    <div style="margin-top:16px;">
+      <button type="button" class="btn btn-primary" id="importBtn" disabled>Import Valid Rows</button>
+      <div class="rn-sb-status" id="importStatus"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script type="module" src="js/import.js"></script>
+</body>
+</html>
