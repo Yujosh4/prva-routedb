@@ -95,7 +95,13 @@ function buildHeaderMap(headerRow) {
 function parseFlightTimeToMinutes(value) {
   if (value == null || value === "") return null;
   if (value instanceof Date) {
-    return value.getUTCHours() * 60 + value.getUTCMinutes();
+    // SheetJS's cellDates conversion encodes the time using the browser's
+    // local time zone, not UTC -- so this has to decode with the matching
+    // local getters. Using getUTCHours/getUTCMinutes here silently shifted
+    // every imported time by the browser's UTC offset (confirmed against
+    // real imported data: exactly -8h, matching PHT/UTC+8) and could wrap
+    // to a nonsense hour entirely for early-morning departures.
+    return value.getHours() * 60 + value.getMinutes();
   }
   const str = String(value).trim();
   const m = str.match(/^(\d{1,2}):(\d{2})$/);
