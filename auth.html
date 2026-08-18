@@ -21,14 +21,14 @@
   <div class="auth-card">
     <h1>Staff Login</h1>
     <p>Route DB staff accounts only -- no public signup.</p>
-    <form id="authForm">
+    <form id="authForm" novalidate>
       <div class="rn-sb-field">
         <label for="authEmail">Email</label>
-        <input type="email" id="authEmail" required>
+        <input type="text" id="authEmail" autocomplete="email">
       </div>
       <div class="rn-sb-field">
         <label for="authPassword">Password</label>
-        <input type="password" id="authPassword" required>
+        <input type="password" id="authPassword" autocomplete="current-password">
       </div>
       <button type="submit" class="btn btn-primary" style="width:100%;">Log In</button>
       <div class="rn-sb-status" id="authStatus"></div>
@@ -49,14 +49,27 @@
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    console.log("[auth] submit handler fired");
     if (!supabase) return;
-    status.textContent = "Logging in…";
-    status.className = "rn-sb-status";
     const email = document.getElementById("authEmail").value.trim();
     const password = document.getElementById("authPassword").value;
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      status.textContent = error.message;
+    if (!email || !password) {
+      status.textContent = "Enter both your email and password.";
+      status.className = "rn-sb-status error";
+      return;
+    }
+    status.textContent = "Logging in…";
+    status.className = "rn-sb-status";
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        status.textContent = error.message;
+        status.className = "rn-sb-status error";
+        return;
+      }
+    } catch (err) {
+      console.error("[auth] unexpected error", err);
+      status.textContent = "Unexpected error: " + err.message;
       status.className = "rn-sb-status error";
       return;
     }
