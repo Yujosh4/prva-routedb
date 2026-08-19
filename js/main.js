@@ -1,5 +1,6 @@
 import { supabase } from "./supabase-client.js";
 import { fetchAirportWeather } from "./weather.js";
+import { buildDispatchUrl } from "./simbrief.js";
 
 const grid = document.getElementById("rnGrid");
 const filterCount = document.getElementById("rnFilterCount");
@@ -277,47 +278,31 @@ function openSimbriefStep(route) {
     <div class="rn-modal-section">
       <h4>Fly This Route via SimBrief</h4>
       <div class="rn-sb-field">
-        <label for="rnSbId">Your SimBrief Pilot ID or Username</label>
+        <label for="rnSbId">Your SimBrief Username</label>
         <input type="text" id="rnSbId" placeholder="e.g. your SimBrief username">
       </div>
-      <button type="button" class="btn btn-primary" id="rnSbSubmit">Generate Flight Plan</button>
+      <button type="button" class="btn btn-primary" id="rnSbSubmit">Open in SimBrief</button>
       <div class="rn-sb-status" id="rnSbStatus"></div>
     </div>`;
 
-  document.getElementById("rnSbSubmit").addEventListener("click", async () => {
+  document.getElementById("rnSbSubmit").addEventListener("click", () => {
     const status = document.getElementById("rnSbStatus");
     const sbId = document.getElementById("rnSbId").value.trim();
     if (!sbId) {
-      status.textContent = "Enter your SimBrief ID or username first.";
+      status.textContent = "Enter your SimBrief username first.";
       status.className = "rn-sb-status error";
       return;
     }
-    if (!supabase) {
-      status.textContent = "SimBrief dispatch isn't connected yet -- this needs the Route DB's Supabase project to be live first.";
-      status.className = "rn-sb-status error";
-      return;
-    }
-    status.textContent = "Generating flight plan…";
-    status.className = "rn-sb-status";
-    try {
-      const { data, error } = await supabase.functions.invoke("simbrief-dispatch", {
-        body: {
-          simbrief_id: sbId,
-          origin: route.origin?.icao,
-          destination: route.destination?.icao,
-          aircraft: route.aircraft_types?.[0],
-          flight_number: route.flight_number,
-        },
-      });
-      if (error) throw error;
-      status.textContent = "Flight plan generated -- check your Active Route page.";
-      status.className = "rn-sb-status success";
-      saveActiveRoute(sbId, route, data);
-    } catch (err) {
-      console.error("RouteDB: SimBrief dispatch failed", err);
-      status.textContent = "Couldn't reach SimBrief dispatch. Try again in a moment.";
-      status.className = "rn-sb-status error";
-    }
+    const url = buildDispatchUrl({
+      origin: route.origin?.icao,
+      destination: route.destination?.icao,
+      aircraftTypes: route.aircraft_types,
+      flightNumber: route.flight_number,
+    });
+    window.open(url, "_blank", "noopener");
+    saveActiveRoute(sbId, route);
+    status.textContent = "Opened SimBrief with this route pre-filled -- generate your plan there, then check your Active Route page for status.";
+    status.className = "rn-sb-status success";
   });
 }
 
