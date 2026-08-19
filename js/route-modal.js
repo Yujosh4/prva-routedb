@@ -13,6 +13,8 @@ import { fetchAirportWeather } from "./weather.js";
 import { buildDispatchUrl, generateViaPopup, summarizeOfp, aircraftOptionsFor } from "./simbrief.js";
 import { renderChartGallery, extractCharts } from "./route-map.js";
 import { ofpDetailHtml } from "./ofp-detail.js";
+import { airportLocalDateKey } from "./career-time.js";
+import { occasionalIcaoCodes, isAircraftAvailableToday } from "./aircraft-rarity.js";
 
 function escapeHtml(str) {
   return String(str ?? "").replace(/[&<>"']/g, (c) => ({
@@ -74,8 +76,32 @@ function saveActiveRoute(simbriefId, route, ofp) {
 }
 
 function openSimbriefStep(route) {
-  const options = aircraftOptionsFor(route.aircraft_types);
+  const allOptions = aircraftOptionsFor(route.aircraft_types);
+
+  // Career Mode only (route.careerInfo is only ever set by career.js) --
+  // keeps pilots from always defaulting to their favorite widebody on
+  // routes realistically flown on multiple types. Plain route browsing
+  // isn't tied to "today," so it isn't restricted this way.
+  let options = allOptions;
+  let unavailableToday = [];
+  if (route.careerInfo) {
+    const dateKey = airportLocalDateKey(route.origin?.icao);
+    const occasional = occasionalIcaoCodes(route.notes);
+    options = allOptions.filter((o) => isAircraftAvailableToday(route.id, dateKey, o.icao, occasional));
+    unavailableToday = allOptions.filter((o) => !options.includes(o));
+  }
+
   const container = document.getElementById("rnSbStep");
+
+  if (!options.length) {
+    container.innerHTML = `
+      <div class="rn-modal-section">
+        <h4>Fly This Route via SimBrief</h4>
+        <p class="rn-sb-status error">No aircraft is available for this route today -- check back another day.</p>
+      </div>`;
+    return;
+  }
+
   container.innerHTML = `
     <div class="rn-modal-section">
       <h4>Fly This Route via SimBrief</h4>
@@ -87,6 +113,11 @@ function openSimbriefStep(route) {
                  ${options.map((o, i) => `<option value="${i}">${escapeHtml(o.sourceName)} (${escapeHtml(o.icao)} / ${escapeHtml(o.reg || "no reg")})</option>`).join("")}
                </select>
              </div>`
+          : ""
+      }
+      ${
+        unavailableToday.length
+          ? `<p style="font-size:12px; color:var(--muted); margin-top:6px;">Not offered today: ${unavailableToday.map((o) => escapeHtml(o.sourceName)).join(", ")} (occasional on this route).</p>`
           : ""
       }
       <div class="rn-sb-field">
