@@ -281,18 +281,36 @@ function openSimbriefStep(route) {
         <label for="rnSbId">Your SimBrief Username</label>
         <input type="text" id="rnSbId" placeholder="e.g. your SimBrief username">
       </div>
-      <button type="button" class="btn btn-primary" id="rnSbSubmit">Open in SimBrief</button>
+      <div class="rn-modal-actions">
+        <button type="button" class="btn btn-primary" id="rnSbFile">File This Route</button>
+        <button type="button" class="btn btn-outline" id="rnSbFileManual">File This Route Manually</button>
+      </div>
       <div class="rn-sb-status" id="rnSbStatus"></div>
     </div>`;
 
-  document.getElementById("rnSbSubmit").addEventListener("click", () => {
-    const status = document.getElementById("rnSbStatus");
+  const status = document.getElementById("rnSbStatus");
+
+  function requireUsername() {
     const sbId = document.getElementById("rnSbId").value.trim();
     if (!sbId) {
       status.textContent = "Enter your SimBrief username first.";
       status.className = "rn-sb-status error";
-      return;
+      return null;
     }
+    return sbId;
+  }
+
+  document.getElementById("rnSbFile").addEventListener("click", () => {
+    const sbId = requireUsername();
+    if (!sbId) return;
+    saveActiveRoute(sbId, route);
+    status.textContent = "Filed -- this route is now on your Active Route page. File it on SimBrief yourself whenever you're ready.";
+    status.className = "rn-sb-status success";
+  });
+
+  document.getElementById("rnSbFileManual").addEventListener("click", () => {
+    const sbId = requireUsername();
+    if (!sbId) return;
     const url = buildDispatchUrl({
       origin: route.origin?.icao,
       destination: route.destination?.icao,
