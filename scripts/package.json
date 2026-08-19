@@ -1,0 +1,12 @@
+{
+  "name": "prva-routedb-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "import-career-schedule": "node import-career-schedule.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2",
+    "dotenv": "^16"
+  }
+}
