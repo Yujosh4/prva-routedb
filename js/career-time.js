@@ -64,7 +64,7 @@ export function urgencyClass(minutes) {
 
 export function formatCountdown(minutes) {
   if (minutes === null || minutes === undefined) return null;
-  if (minutes <= 0) return "Already departed";
+  if (minutes <= 0) return "Departed";
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   if (h > 0) return `${h}hr ${m}min`;

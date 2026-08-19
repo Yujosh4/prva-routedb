@@ -43,9 +43,12 @@
 <section class="rn-filters">
   <div class="section-inner">
     <input type="text" id="rnSearch" placeholder="Search flight number, city, or ICAO...">
-    <select id="rnOriginFilter"><option value="">Any origin</option></select>
-    <select id="rnDestinationFilter"><option value="">Any destination</option></select>
-    <select id="rnAirlineFilter"><option value="">Any airline</option></select>
+    <input type="text" id="rnOriginFilter" list="rnOriginList" placeholder="Any origin" autocomplete="off">
+    <datalist id="rnOriginList"></datalist>
+    <input type="text" id="rnDestinationFilter" list="rnDestinationList" placeholder="Any destination" autocomplete="off">
+    <datalist id="rnDestinationList"></datalist>
+    <input type="text" id="rnAirlineFilter" list="rnAirlineList" placeholder="Any airline" autocomplete="off">
+    <datalist id="rnAirlineList"></datalist>
     <select id="rnDayFilter"><option value="">Any day</option></select>
     <select id="rnQuickFilter">
       <option value="">All flights</option>
@@ -58,6 +61,7 @@
       <option value="time">Sort: Time of day</option>
       <option value="flight">Sort: Flight number</option>
     </select>
+    <button type="button" class="btn btn-outline" id="rnClearFilters">Clear Filters</button>
     <span class="rn-filter-count" id="rnFilterCount"></span>
   </div>
 </section>

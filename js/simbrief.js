@@ -22,7 +22,9 @@ import { extractCharts } from "./route-map.js";
 // Unmapped types are simply omitted from the prefill rather than guessed.
 const ICAO_TYPE_MAP = {
   "dash 8 q400": "DH8D",
+  "dash 8-400": "DH8D",
   "a320": "A320",
+  "a320-200": "A320",
   "a321": "A321",
   "a321-200": "A321",
   "a330-300": "A333",

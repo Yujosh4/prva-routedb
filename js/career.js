@@ -8,12 +8,23 @@ const grid = document.getElementById("rnGrid");
 const filterCount = document.getElementById("rnFilterCount");
 const searchInput = document.getElementById("rnSearch");
 const originSelect = document.getElementById("rnOriginFilter");
+const originList = document.getElementById("rnOriginList");
 const destinationSelect = document.getElementById("rnDestinationFilter");
+const destinationList = document.getElementById("rnDestinationList");
 const airlineSelect = document.getElementById("rnAirlineFilter");
+const airlineList = document.getElementById("rnAirlineList");
 const daySelect = document.getElementById("rnDayFilter");
 const quickFilterSelect = document.getElementById("rnQuickFilter");
 const sortBySelect = document.getElementById("rnSortBy");
+const clearFiltersBtn = document.getElementById("rnClearFilters");
 const { openModal } = initRouteModal();
+
+// Origin/destination filters are typable (datalist) for easier mobile use,
+// but filtering logic needs the underlying ICAO code, not the "City (ICAO)"
+// label typed into the input -- these translate one to the other.
+let originLabelToIcao = new Map();
+let destinationLabelToIcao = new Map();
+let knownAirlineNames = new Set();
 
 const viewCalendarBtn = document.getElementById("viewCalendarBtn");
 const viewListBtn = document.getElementById("viewListBtn");
@@ -172,6 +183,10 @@ function gateTerminalHtml(entry) {
   return `<span class="rn-tag">${parts.join(" &middot; ")}</span>`;
 }
 
+function airportLabel(a) {
+  return `${a.city} (${a.icao})`;
+}
+
 function populateFilterOptions(entries) {
   const origins = new Map();
   const destinations = new Map();
@@ -184,20 +199,18 @@ function populateFilterOptions(entries) {
     (e.days_of_week || []).forEach((d) => daysSeen.add(d));
   });
 
-  const fillSelect = (select, map, placeholder) => {
-    const options = [`<option value="">${placeholder}</option>`];
-    [...map.values()]
-      .sort((a, b) => a.city.localeCompare(b.city))
-      .forEach((a) => options.push(`<option value="${a.icao}">${escapeHtml(a.city)} (${a.icao})</option>`));
-    select.innerHTML = options.join("");
+  const fillDatalist = (datalist, map) => {
+    const labelToIcao = new Map();
+    const airports = [...map.values()].sort((a, b) => a.city.localeCompare(b.city));
+    datalist.innerHTML = airports.map((a) => `<option value="${escapeHtml(airportLabel(a))}"></option>`).join("");
+    airports.forEach((a) => labelToIcao.set(airportLabel(a), a.icao));
+    return labelToIcao;
   };
 
-  fillSelect(originSelect, origins, "Any origin");
-  fillSelect(destinationSelect, destinations, "Any destination");
-  airlineSelect.innerHTML = [
-    `<option value="">Any airline</option>`,
-    ...[...airlines].sort().map((a) => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`),
-  ].join("");
+  originLabelToIcao = fillDatalist(originList, origins);
+  destinationLabelToIcao = fillDatalist(destinationList, destinations);
+  knownAirlineNames = new Set(airlines);
+  airlineList.innerHTML = [...airlines].sort().map((a) => `<option value="${escapeHtml(a)}"></option>`).join("");
   daySelect.innerHTML = [
     `<option value="">Any day</option>`,
     ...Object.entries(DAY_NAMES).filter(([d]) => daysSeen.has(Number(d))).map(([d, name]) => `<option value="${d}">${name}</option>`),
@@ -244,9 +257,13 @@ const QUICK_FILTER_MAX_MINUTES = { "1h": 60, "3h": 180 };
 
 function getFilteredEntries(yearMonth) {
   const q = searchInput.value.trim().toLowerCase();
-  const origin = originSelect.value;
-  const destination = destinationSelect.value;
-  const airline = airlineSelect.value;
+  // Typed text only counts as a filter once it exactly matches a known
+  // "City (ICAO)" label (typically via picking a datalist suggestion) --
+  // partial/unmatched text is treated as no filter yet, same as blank.
+  const origin = originLabelToIcao.get(originSelect.value.trim()) || "";
+  const destination = destinationLabelToIcao.get(destinationSelect.value.trim()) || "";
+  const typedAirline = airlineSelect.value.trim();
+  const airline = knownAirlineNames.has(typedAirline) ? typedAirline : "";
   const day = daySelect.value ? Number(daySelect.value) : null;
   const quickFilter = quickFilterSelect.value;
   const sortBy = sortBySelect.value;
@@ -433,7 +450,7 @@ function renderCalendar() {
               const disruptionLbl = disruptionLabel(disruption);
               const titleParts = [`${e.route.flight_number} ${formatTime12h(e.departure_time_local)}`];
               if (disruptionLbl) titleParts.push(disruptionLbl);
-              else if (isPast) titleParts.push("Already departed");
+              else if (isPast) titleParts.push("Departed");
               else if (minutes !== null) titleParts.push(formatCountdown(minutes));
               const title = titleParts.join(" -- ");
               return `<span class="cal-flight-chip ${cls}" data-entry="${escapeHtml(e.id)}" title="${escapeHtml(title)}">${escapeHtml(e.route.flight_number)} ${escapeHtml(formatTime12h(e.departure_time_local))}</span>`;
@@ -504,7 +521,14 @@ function openDayListModal(dayLabel, entries, dateKey) {
       ${entries
         .map((e) => {
           const disruption = isTodayDate ? entryDisruptionToday(e) : entryDisruptionForDate(e, dateKey);
-          const minutes = disruption.status === "cancelled" ? null : entryCountdownMinutes(e);
+          // entryCountdownMinutes always compares against the ORIGIN AIRPORT's
+          // own current date/time -- calling it for a date the viewer isn't
+          // looking at as "today" produced nonsense (a flight shown under
+          // "tomorrow" on the viewer's calendar could still read as departed,
+          // because the airport's own clock had already moved past it while
+          // the viewer's hadn't). Only ever compute it when this IS the date
+          // the viewer considers today.
+          const minutes = isTodayDate && disruption.status !== "cancelled" ? entryCountdownMinutes(e) : null;
           const disruptionLbl = disruptionLabel(disruption);
           const gt = [e.terminal ? `T${e.terminal}` : "", e.gate ? `Gate ${e.gate}` : ""].filter(Boolean).join(" / ");
           const rowStyle = isPast ? "opacity:.55; text-decoration:line-through;" : "";
@@ -517,7 +541,7 @@ function openDayListModal(dayLabel, entries, dateKey) {
             ${disruptionLbl ? `<span class="rn-tag ${disruptionClass(disruption.status)}" style="margin-top:4px; display:inline-block;">${escapeHtml(disruptionLbl)}</span>` : ""}
           </div>
           <div style="display:flex; align-items:center; gap:10px;">
-            ${isPast ? `<span class="rn-tag cal-urgency-tag cal-urgency-departed">Already departed</span>` : ""}
+            ${isPast ? `<span class="rn-tag cal-urgency-tag cal-urgency-departed">Departed</span>` : ""}
             ${!isPast && minutes !== null ? `<span class="rn-tag cal-urgency-tag ${urgencyClass(minutes)}">${escapeHtml(formatCountdown(minutes))}</span>` : ""}
             <span style="font-size:13px;">${escapeHtml(formatTime12h(e.departure_time_local))}</span>
             <button type="button" class="btn btn-outline" data-daylist-entry="${escapeHtml(e.id)}">Details</button>
@@ -576,6 +600,17 @@ function render() {
 [searchInput, originSelect, destinationSelect, airlineSelect, daySelect, quickFilterSelect, sortBySelect].forEach((el) =>
   el.addEventListener("input", render)
 );
+
+clearFiltersBtn.addEventListener("click", () => {
+  searchInput.value = "";
+  originSelect.value = "";
+  destinationSelect.value = "";
+  airlineSelect.value = "";
+  daySelect.value = "";
+  quickFilterSelect.value = "";
+  sortBySelect.value = "soonest";
+  render();
+});
 
 (async function init() {
   const entries = await loadSchedule();
