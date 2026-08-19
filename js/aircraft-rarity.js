@@ -12,7 +12,7 @@
 // within a day and varies day to day, same pattern as career-disruptions.js.
 import { hashString } from "./career-autofill.js";
 
-const OCCASIONAL_AVAILABILITY_RATE = 0.25;
+const OCCASIONAL_AVAILABILITY_RATE = 0.35;
 
 // Parses "Occasional A359" / "Occasional A359 & A35K" out of a route's
 // staff-written remarks into the ICAO type codes it names.
