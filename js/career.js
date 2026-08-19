@@ -282,16 +282,23 @@ function getFilteredEntries(yearMonth) {
   } else if (sortBy === "time") {
     result = [...result].sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
   } else {
-    // "soonest" (default): entries operating today, ranked by how close
-    // they are to departure; everything else (not today) follows, ordered
-    // by time of day so the list stays stable rather than shuffled.
+    // "soonest" (default): upcoming-today flights first (soonest first),
+    // then already-departed-today flights, then everything not operating
+    // today at all. Plain ascending on raw minutes would put departed
+    // flights (negative minutes) BEFORE upcoming ones -- the same bug
+    // already fixed for today's calendar cell -- so departed/upcoming has
+    // to be its own ranking tier, not just a number comparison.
     result = [...result].sort((a, b) => {
       const ma = entryCountdownMinutes(a);
       const mb = entryCountdownMinutes(b);
-      if (ma !== null && mb !== null) return ma - mb;
-      if (ma !== null) return -1;
-      if (mb !== null) return 1;
-      return a.departure_time_local.localeCompare(b.departure_time_local);
+      const aToday = ma !== null;
+      const bToday = mb !== null;
+      if (aToday !== bToday) return aToday ? -1 : 1;
+      if (!aToday) return a.departure_time_local.localeCompare(b.departure_time_local);
+      const aDeparted = ma <= 0;
+      const bDeparted = mb <= 0;
+      if (aDeparted !== bDeparted) return aDeparted ? 1 : -1;
+      return ma - mb;
     });
   }
 
