@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manage Career Schedule | PRVA Route Network</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .cs-wrap{ max-width: 1100px; margin: 0 auto; padding: 40px 28px 90px; }
+  .cs-section{ background: var(--white); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 20px; }
+  .cs-summary{ display: flex; gap: 24px; flex-wrap: wrap; align-items: center; }
+  .cs-summary strong{ font-size: 20px; }
+  .cs-table-wrap{ overflow-x: auto; }
+  table.cs-table{ width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.cs-table th, table.cs-table td{ padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+  table.cs-table th{ background: var(--bg-soft); position: sticky; top: 0; }
+  table.cs-table input[type="time"], table.cs-table input[type="text"]{
+    font-family: inherit; font-size: 12px; padding: 5px 7px; border: 1px solid var(--line); border-radius: var(--radius-md); width: 100%;
+  }
+  .cs-days{ display: flex; gap: 3px; }
+  .cs-days label{ font-size: 10px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; }
+  tr.cs-row-none{ background: #fafafa; }
+  tr.cs-row-suspended{ background: #fdf1f2; }
+  .cs-save-btn{ padding: 5px 10px; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<header class="rn-header">
+  <div class="section-inner">
+    <a href="index.html" class="rn-brand"><strong>PRVA</strong><span>Career Schedule -- Staff</span></a>
+    <nav>
+      <a href="career.html">Career Mode</a>
+      <a href="import.html">Import Routes</a>
+      <a href="#" id="logoutLink">Log Out</a>
+    </nav>
+  </div>
+</header>
+
+<div class="cs-wrap">
+  <h1 style="margin:32px 0 6px; font-size:26px;">Manage Career Schedule</h1>
+  <p style="color:var(--muted); margin-bottom:28px;">Assign departure times, or mark a route as suspended (e.g. real-world airspace closure) so it's skipped entirely.</p>
+
+  <div class="cs-section cs-summary" id="csSummary">Loading…</div>
+
+  <div class="cs-section">
+    <h3 style="margin-bottom:10px; font-size:15px;">Auto-Fill Unscheduled Routes</h3>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:14px;">
+      Assigns a plausible departure time to every route below that has no schedule entry yet -- biased toward realistic patterns (long-haul flights lean toward early-morning/overnight departures, matching what the real-world AviationStack data actually showed) with built-in variety so routes don't all cluster at the same time. Deterministic: re-running this never changes times already assigned, and it never touches routes you've manually set or suspended.
+    </p>
+    <button type="button" class="btn btn-primary" id="autoFillBtn">Auto-Fill Unscheduled Routes</button>
+    <div class="rn-sb-status" id="autoFillStatus"></div>
+  </div>
+
+  <div class="cs-section">
+    <h3 style="margin-bottom:10px; font-size:15px;">All Routes</h3>
+    <div class="rn-row" style="margin-bottom:14px;">
+      <input type="text" id="csSearch" placeholder="Search flight number or city..." style="max-width:320px;">
+    </div>
+    <div class="cs-table-wrap" id="csTableWrap">Loading…</div>
+  </div>
+</div>
+
+<script type="module" src="js/career-schedule.js"></script>
+</body>
+</html>
