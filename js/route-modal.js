@@ -14,7 +14,7 @@ import { buildDispatchUrl, generateViaPopup, summarizeOfp, aircraftOptionsFor } 
 import { renderChartGallery, extractCharts } from "./route-map.js";
 import { ofpDetailHtml } from "./ofp-detail.js";
 import { airportLocalDateKey } from "./career-time.js";
-import { occasionalIcaoCodes, isAircraftAvailableToday } from "./aircraft-rarity.js";
+import { occasionalIcaoCodes, isAircraftAvailableToday, isDomesticRoute } from "./aircraft-rarity.js";
 
 function escapeHtml(str) {
   return String(str ?? "").replace(/[&<>"']/g, (c) => ({
@@ -78,13 +78,14 @@ function saveActiveRoute(simbriefId, route, ofp) {
 function openSimbriefStep(route) {
   const allOptions = aircraftOptionsFor(route.aircraft_types);
 
-  // Career Mode only (route.careerInfo is only ever set by career.js) --
-  // keeps pilots from always defaulting to their favorite widebody on
-  // routes realistically flown on multiple types. Plain route browsing
-  // isn't tied to "today," so it isn't restricted this way.
+  // Career Mode only (route.careerInfo is only ever set by career.js), and
+  // domestic routes only -- A350s are PAL's international flagship, so
+  // seeing one internationally isn't the rare event; seeing one on a
+  // domestic route is. Plain route browsing isn't tied to "today" either
+  // way, so it's never restricted.
   let options = allOptions;
   let unavailableToday = [];
-  if (route.careerInfo) {
+  if (route.careerInfo && isDomesticRoute(route.origin?.country, route.destination?.country)) {
     const dateKey = airportLocalDateKey(route.origin?.icao);
     const occasional = occasionalIcaoCodes(route.notes);
     options = allOptions.filter((o) => isAircraftAvailableToday(route.id, dateKey, o.icao, occasional));

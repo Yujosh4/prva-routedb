@@ -98,8 +98,8 @@ async function loadSchedule() {
       .select(
         `id, departure_time_local, days_of_week, gate, terminal, source, notes,
          route:routes(id, flight_number, aircraft_types, liveries, distance_nm, flight_time_minutes, category, notes,
-           origin:airports!routes_origin_icao_fkey(icao, iata, name, city, runway_notes),
-           destination:airports!routes_destination_icao_fkey(icao, iata, name, city, runway_notes)),
+           origin:airports!routes_origin_icao_fkey(icao, iata, name, city, country, runway_notes),
+           destination:airports!routes_destination_icao_fkey(icao, iata, name, city, country, runway_notes)),
          airline:airlines(name, logo_url, is_mainline),
          min_rank:ranks(name, sort_order)`
       )
