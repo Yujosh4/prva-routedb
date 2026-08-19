@@ -1,4 +1,5 @@
 import { fetchLatestOfp } from "./simbrief.js";
+import { renderRouteMap } from "./route-map.js";
 
 const STORAGE_KEY = "prva-routedb-active-routes";
 const grid = document.getElementById("rnActiveGrid");
@@ -29,7 +30,7 @@ function saveEntries(entries) {
 // fairly confident about, but not verified against a real account here, so
 // this falls back to a raw JSON view rather than silently showing nothing
 // if a field is missing or named differently than expected.
-function ofpSummaryHtml(ofp) {
+function ofpSummaryHtml(ofp, index) {
   if (!ofp) return "";
   const aircraft = ofp.aircraft?.icaocode || ofp.aircraft?.name;
   const route = ofp.general?.route;
@@ -43,6 +44,7 @@ function ofpSummaryHtml(ofp) {
       ${route ? `<div><strong>Route:</strong> ${escapeHtml(route)}</div>` : ""}
       ${block ? `<div><strong>Block time:</strong> ${block}</div>` : ""}
       ${!hasKnownFields ? `<div>Flight plan found -- see raw data below.</div>` : ""}
+      <div id="rnActiveMap-${index}" class="rn-route-map" style="margin-top:10px; display:none;"></div>
       <details style="margin-top:6px;">
         <summary style="cursor:pointer; color:var(--muted);">Raw OFP data</summary>
         <pre style="white-space:pre-wrap; word-break:break-word; font-size:11px; margin-top:6px;">${escapeHtml(JSON.stringify(ofp, null, 2))}</pre>
@@ -73,7 +75,7 @@ function cardHtml(entry, index) {
         <button type="button" class="btn btn-outline" data-remove="${index}">Remove</button>
       </div>
       <div id="rnOfpStatus-${index}" class="rn-sb-status"></div>
-      ${ofpSummaryHtml(entry.ofp)}
+      ${ofpSummaryHtml(entry.ofp, index)}
     </article>`;
 }
 
@@ -84,6 +86,13 @@ function render() {
     return;
   }
   grid.innerHTML = entries.map(cardHtml).join("");
+  entries.forEach((entry, index) => {
+    if (!entry.ofp) return;
+    const mapEl = document.getElementById(`rnActiveMap-${index}`);
+    if (mapEl) mapEl.style.display = "block";
+    const mapped = renderRouteMap(`rnActiveMap-${index}`, entry.ofp);
+    if (!mapped && mapEl) mapEl.style.display = "none";
+  });
 }
 
 grid.addEventListener("click", async (e) => {

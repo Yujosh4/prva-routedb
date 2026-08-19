@@ -1,12 +1,20 @@
-// SimBrief integration -- both calls here are confirmed to need no API key and
-// no server-side proxy (verified directly: the fetcher endpoint responds with
-// real JSON to a plain client-side fetch, no CORS error). Sourced from
-// Navigraph's own guides, not guessed:
-//   - Dispatch redirect: https://forum.navigraph.com/t/dispatch-redirect-guide/5299
-//   - Latest OFP fetch:  https://forum.navigraph.com/t/fetching-a-users-latest-ofp-data/5297
-// The registered API key (kept out of the browser, unused for now) is only
-// needed for the full custom PHP/JS integration kit -- a deeper integration
-// for later (e.g. Crew Center's PIREP auto-validation), not this.
+// SimBrief integration. Three mechanisms, sourced from Navigraph's own
+// guides and reference kit, not guessed:
+//   - Dispatch redirect (buildDispatchUrl): no key needed.
+//     https://forum.navigraph.com/t/dispatch-redirect-guide/5299
+//   - Latest OFP fetch (fetchLatestOfp): no key needed.
+//     https://forum.navigraph.com/t/fetching-a-users-latest-ofp-data/5297
+//   - Popup-based auto-generation (openDispatchPopup): DOES need the
+//     registered API key, ported from SimBrief's official kit
+//     (https://www.simbrief.com/api/SimBrief_APIv1.zip -> simbrief.apiv1.js
+//     + simbrief.apiv1.php). The key never reaches the browser -- only the
+//     signed "api_code" it produces does, computed server-side by the
+//     simbrief-auth-code Edge Function. This still opens a small SimBrief
+//     login popup (SimBrief's terms don't allow bypassing that), but skips
+//     the pilot having to land on and manually submit SimBrief's own
+//     dispatch form -- generation happens in the popup, then this fetches
+//     the result back via fetchLatestOfp once it closes.
+import { supabase } from "./supabase-client.js";
 
 // ICAO type designators are stable, well-established identifiers -- this
 // list only covers aircraft actually seen in PRVA's route data so far.
@@ -56,4 +64,74 @@ export async function fetchLatestOfp(username) {
     throw new Error(status);
   }
   return data;
+}
+
+function waitForPopupClose(popup) {
+  return new Promise((resolve) => {
+    const timer = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(timer);
+        resolve();
+      }
+    }, 500);
+  });
+}
+
+// Opens the SimBrief login+generate popup with this route pre-filled, waits
+// for it to close, then fetches the pilot's now-freshly-generated OFP.
+// Rejects with a clear, user-facing message on every failure path (popup
+// blocked, aircraft type not recognized, auth code request failed) so the
+// caller can show it directly and suggest the manual fallback.
+export async function generateViaPopup({ origin, destination, aircraftTypes, flightNumber }, username) {
+  const type = (aircraftTypes || []).map(toIcaoType).find(Boolean);
+  if (!origin || !destination || !type) {
+    throw new Error("Missing origin, destination, or a recognized aircraft type -- try Filing Manually instead.");
+  }
+  const fltnumMatch = String(flightNumber || "").match(/^[A-Za-z]{2,3}(\d+)$/);
+  const fltnum = fltnumMatch ? fltnumMatch[1] : "";
+
+  const timestamp = Math.round(Date.now() / 1000);
+  // SimBrief's own reference kit only strips a literal "http://" prefix
+  // (a legacy-era quirk) -- kept exact so the signature this produces
+  // matches what SimBrief's backend independently recomputes to validate
+  // the request. The value itself doesn't matter to this app (no redirect
+  // dance -- see the popup-close handling below), only that it's identical
+  // between the string we sign and the field we submit.
+  const outputpageCalc = location.href.replace("http://", "");
+  const api_req = origin + destination + type + timestamp + outputpageCalc;
+
+  if (!supabase) {
+    throw new Error("Supabase isn't connected yet -- can't request a signed SimBrief authorization code.");
+  }
+  const { data, error } = await supabase.functions.invoke("simbrief-auth-code", { body: { api_req } });
+  if (error || !data?.api_code) {
+    throw new Error("Couldn't get SimBrief authorization -- try again in a moment, or File Manually instead.");
+  }
+
+  const popup = window.open("about:blank", "SBworker", "width=600,height=315");
+  if (!popup) {
+    throw new Error("Your browser blocked the SimBrief popup -- allow popups for this site and try again.");
+  }
+  popup.focus();
+
+  const form = document.createElement("form");
+  form.method = "get";
+  form.action = "https://www.simbrief.com/ofp/ofp.loader.api.php";
+  form.target = "SBworker";
+  form.style.display = "none";
+  const fields = { orig: origin, dest: destination, type, fltnum, apicode: data.api_code, outputpage: outputpageCalc, timestamp };
+  for (const [name, value] of Object.entries(fields)) {
+    if (value === "" || value == null) continue;
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+  }
+  document.body.appendChild(form);
+  form.submit();
+  document.body.removeChild(form);
+
+  await waitForPopupClose(popup);
+  return fetchLatestOfp(username);
 }

@@ -1,6 +1,7 @@
 import { supabase } from "./supabase-client.js";
 import { fetchAirportWeather } from "./weather.js";
-import { buildDispatchUrl } from "./simbrief.js";
+import { buildDispatchUrl, generateViaPopup } from "./simbrief.js";
+import { renderRouteMap } from "./route-map.js";
 
 const grid = document.getElementById("rnGrid");
 const filterCount = document.getElementById("rnFilterCount");
@@ -272,6 +273,28 @@ function openModal(route) {
   modalBody.querySelector("[data-fly]")?.addEventListener("click", () => openSimbriefStep(route));
 }
 
+function ofpResultHtml(ofp) {
+  const aircraft = ofp?.aircraft?.icaocode || ofp?.aircraft?.name;
+  const route = ofp?.general?.route;
+  const block = ofp?.times?.est_time_enroute
+    ? `${Math.floor(ofp.times.est_time_enroute / 3600)}h ${Math.round((ofp.times.est_time_enroute % 3600) / 60)}m`
+    : null;
+  return `
+    <div class="rn-modal-section">
+      <h4>Your Flight Plan</h4>
+      <dl class="rn-detail-grid">
+        ${aircraft ? `<div><dt>Aircraft</dt><dd>${escapeHtml(aircraft)}</dd></div>` : ""}
+        ${route ? `<div><dt>Route</dt><dd>${escapeHtml(route)}</dd></div>` : ""}
+        ${block ? `<div><dt>Block Time</dt><dd>${block}</dd></div>` : ""}
+      </dl>
+      <div id="rnRouteMap" class="rn-route-map" style="margin-top:12px;"></div>
+      <details style="margin-top:10px;">
+        <summary style="cursor:pointer; color:var(--muted); font-size:12px;">Raw OFP data</summary>
+        <pre style="white-space:pre-wrap; word-break:break-word; font-size:11px; margin-top:6px;">${escapeHtml(JSON.stringify(ofp, null, 2))}</pre>
+      </details>
+    </div>`;
+}
+
 function openSimbriefStep(route) {
   const container = document.getElementById("rnSbStep");
   container.innerHTML = `
@@ -286,9 +309,12 @@ function openSimbriefStep(route) {
         <button type="button" class="btn btn-outline" id="rnSbFileManual">File This Route Manually</button>
       </div>
       <div class="rn-sb-status" id="rnSbStatus"></div>
+      <div id="rnOfpResult"></div>
     </div>`;
 
   const status = document.getElementById("rnSbStatus");
+  const fileBtn = document.getElementById("rnSbFile");
+  const manualBtn = document.getElementById("rnSbFileManual");
 
   function requireUsername() {
     const sbId = document.getElementById("rnSbId").value.trim();
@@ -300,15 +326,38 @@ function openSimbriefStep(route) {
     return sbId;
   }
 
-  document.getElementById("rnSbFile").addEventListener("click", () => {
+  fileBtn.addEventListener("click", async () => {
     const sbId = requireUsername();
     if (!sbId) return;
-    saveActiveRoute(sbId, route);
-    status.textContent = "Filed -- this route is now on your Active Route page. File it on SimBrief yourself whenever you're ready.";
-    status.className = "rn-sb-status success";
+    fileBtn.disabled = true;
+    status.textContent = "Opening SimBrief -- log in there if prompted, the plan will generate automatically…";
+    status.className = "rn-sb-status";
+    try {
+      const ofp = await generateViaPopup(
+        {
+          origin: route.origin?.icao,
+          destination: route.destination?.icao,
+          aircraftTypes: route.aircraft_types,
+          flightNumber: route.flight_number,
+        },
+        sbId
+      );
+      saveActiveRoute(sbId, route, ofp);
+      status.textContent = "Flight plan generated and filed -- also saved to your Active Route page.";
+      status.className = "rn-sb-status success";
+      document.getElementById("rnOfpResult").innerHTML = ofpResultHtml(ofp);
+      const mapped = renderRouteMap("rnRouteMap", ofp);
+      if (!mapped) document.getElementById("rnRouteMap").outerHTML = "";
+    } catch (err) {
+      console.error("RouteDB: SimBrief popup generation failed", err);
+      status.textContent = err.message || "Couldn't generate a flight plan. Try File This Route Manually instead.";
+      status.className = "rn-sb-status error";
+    } finally {
+      fileBtn.disabled = false;
+    }
   });
 
-  document.getElementById("rnSbFileManual").addEventListener("click", () => {
+  manualBtn.addEventListener("click", () => {
     const sbId = requireUsername();
     if (!sbId) return;
     const url = buildDispatchUrl({
