@@ -552,8 +552,13 @@ dd.cal-urgency-departed{ color: var(--muted); }
    real-world claim (see js/career-disruptions.js). Cancelled is visually
    the loudest since it's the one status where flying the route makes no
    sense; delayed is a milder amber note. */
-.cal-flight-chip.cal-status-delayed{ background: #fff4e0; }
-.cal-flight-chip.cal-status-cancelled{ background: #f4f4f6; text-decoration: line-through; opacity: .7; }
+/* Fixed light backgrounds regardless of theme (same reasoning as the
+   .rn-tag equivalents below) -- but unlike those, these two never set an
+   explicit text color, so in dark mode the chip inherited --ink's near-
+   white dark-mode value straight onto a light background and became all
+   but unreadable. */
+.cal-flight-chip.cal-status-delayed{ background: #fff4e0; color: #8a5a00; }
+.cal-flight-chip.cal-status-cancelled{ background: #f4f4f6; color: #6b7280; text-decoration: line-through; opacity: .7; }
 .rn-tag.cal-status-delayed{ background: #fff4e0; border-color: #e6a532; color: #8a5a00; font-weight: 700; }
 .rn-tag.cal-status-cancelled{ background: #ffe1e1; border-color: var(--red-500); color: var(--red-700); font-weight: 700; }
 dd.cal-status-delayed{ color: #8a5a00; font-weight: 700; }
