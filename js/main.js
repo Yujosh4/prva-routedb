@@ -325,7 +325,8 @@ function ofpResultHtml(ofp) {
     </div>
 
     <div class="rn-modal-section">
-      <h4>Flight Plan Summary</h4>
+      <h4>Flight Plan Summary <span class="rn-recommended-badge">Recommended</span></h4>
+      <p style="font-size:11px; color:var(--muted); margin-top:-6px; margin-bottom:10px;">No specific routing was forced -- SimBrief computed this route itself based on current winds aloft.</p>
       <dl class="rn-detail-grid">
         ${detailRow("Route", ofp?.general?.route)}
         ${detailRow("Block Time", hms(ofp?.times?.est_time_enroute))}

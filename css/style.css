@@ -248,6 +248,19 @@ button{ font-family: inherit; }
 
 .rn-modal-section{ margin-bottom: 20px; }
 .rn-modal-section h4{ font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 10px; }
+.rn-recommended-badge{
+  display: inline-block;
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 700;
+  color: #1a7f4b;
+  background: #e8f7ef;
+  border-radius: 99px;
+  padding: 2px 9px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
 .rn-detail-grid{
   display: grid;
   grid-template-columns: 1fr 1fr;
