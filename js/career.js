@@ -9,6 +9,8 @@ const originSelect = document.getElementById("rnOriginFilter");
 const destinationSelect = document.getElementById("rnDestinationFilter");
 const airlineSelect = document.getElementById("rnAirlineFilter");
 const daySelect = document.getElementById("rnDayFilter");
+const quickFilterSelect = document.getElementById("rnQuickFilter");
+const sortBySelect = document.getElementById("rnSortBy");
 const { openModal } = initRouteModal();
 
 const viewCalendarBtn = document.getElementById("viewCalendarBtn");
@@ -72,6 +74,7 @@ async function loadSchedule() {
          min_rank:ranks(name, sort_order)`
       )
       .eq("active", true)
+      .eq("in_career_mode", true)
       .order("departure_time_local");
     if (error) throw error;
     return (data || []).filter((e) => e.route); // drop any orphaned rows defensively
@@ -186,14 +189,18 @@ function entryCardHtml(entry) {
     </article>`;
 }
 
+const QUICK_FILTER_MAX_MINUTES = { "1h": 60, "3h": 180 };
+
 function getFilteredEntries() {
   const q = searchInput.value.trim().toLowerCase();
   const origin = originSelect.value;
   const destination = destinationSelect.value;
   const airline = airlineSelect.value;
   const day = daySelect.value ? Number(daySelect.value) : null;
+  const quickFilter = quickFilterSelect.value;
+  const sortBy = sortBySelect.value;
 
-  return allEntries.filter((e) => {
+  let result = allEntries.filter((e) => {
     const r = e.route;
     if (origin && r.origin?.icao !== origin) return false;
     if (destination && r.destination?.icao !== destination) return false;
@@ -204,8 +211,39 @@ function getFilteredEntries() {
         .join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
+    if (quickFilter) {
+      // Only "today" (at the origin airport's own clock) has a countdown at
+      // all -- entries.js's minutesToEffectiveDeparture already returns
+      // null for anything not operating on the origin's current weekday.
+      const minutes = entryCountdownMinutes(e);
+      if (minutes === null) return false;
+      if (quickFilter !== "today") {
+        const max = QUICK_FILTER_MAX_MINUTES[quickFilter];
+        if (minutes < 0 || minutes > max) return false;
+      }
+    }
     return true;
   });
+
+  if (sortBy === "flight") {
+    result = [...result].sort((a, b) => a.route.flight_number.localeCompare(b.route.flight_number));
+  } else if (sortBy === "time") {
+    result = [...result].sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
+  } else {
+    // "soonest" (default): entries operating today, ranked by how close
+    // they are to departure; everything else (not today) follows, ordered
+    // by time of day so the list stays stable rather than shuffled.
+    result = [...result].sort((a, b) => {
+      const ma = entryCountdownMinutes(a);
+      const mb = entryCountdownMinutes(b);
+      if (ma !== null && mb !== null) return ma - mb;
+      if (ma !== null) return -1;
+      if (mb !== null) return 1;
+      return a.departure_time_local.localeCompare(b.departure_time_local);
+    });
+  }
+
+  return result;
 }
 
 function openEntryDetails(entry) {
@@ -431,7 +469,7 @@ function render() {
   else renderList();
 }
 
-[searchInput, originSelect, destinationSelect, airlineSelect, daySelect].forEach((el) =>
+[searchInput, originSelect, destinationSelect, airlineSelect, daySelect, quickFilterSelect, sortBySelect].forEach((el) =>
   el.addEventListener("input", render)
 );
 

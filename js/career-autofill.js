@@ -7,7 +7,7 @@
 export const CAREER_AIRLINES = ["Philippine Airlines", "PAL Express"];
 export const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7];
 
-function hashString(str) {
+export function hashString(str) {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = (Math.imul(h, 31) + str.charCodeAt(i)) >>> 0;
   return h;

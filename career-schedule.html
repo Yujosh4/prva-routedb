@@ -56,6 +56,24 @@
   </div>
 
   <div class="cs-section">
+    <h3 style="margin-bottom:10px; font-size:15px;">Career Mode Roster</h3>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:14px;">
+      Career Mode only shows routes marked "in roster" below -- not every scheduled route, so pilots see a
+      manageable set of duty assignments instead of the whole network. Click Generate to pick a fresh, capped
+      selection from routes that already have a schedule (Auto-Fill those first if needed); re-running this
+      replaces the previous selection. You can also toggle individual routes in the table below by hand.
+    </p>
+    <div class="imp-row" style="display:flex; gap:14px; align-items:flex-end;">
+      <div class="imp-field" style="flex:0 0 140px;">
+        <label for="csRosterCap" style="display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px;">Roster cap</label>
+        <input type="number" id="csRosterCap" value="50" min="1" style="width:100%; font-family:inherit; font-size:14px; padding:8px 10px; border:1px solid var(--line); border-radius:var(--radius-md);">
+      </div>
+      <button type="button" class="btn btn-primary" id="csGenerateRosterBtn">Generate Roster for This Month</button>
+    </div>
+    <div class="rn-sb-status" id="csRosterStatus"></div>
+  </div>
+
+  <div class="cs-section">
     <h3 style="margin-bottom:10px; font-size:15px;">All Routes</h3>
     <div class="rn-row" style="margin-bottom:14px;">
       <input type="text" id="csSearch" placeholder="Search flight number or city..." style="max-width:320px;">

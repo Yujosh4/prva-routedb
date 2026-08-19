@@ -47,6 +47,17 @@
     <select id="rnDestinationFilter"><option value="">Any destination</option></select>
     <select id="rnAirlineFilter"><option value="">Any airline</option></select>
     <select id="rnDayFilter"><option value="">Any day</option></select>
+    <select id="rnQuickFilter">
+      <option value="">All flights</option>
+      <option value="1h">Departing within 1 hour</option>
+      <option value="3h">Departing within 3 hours</option>
+      <option value="today">Today only</option>
+    </select>
+    <select id="rnSortBy">
+      <option value="soonest">Sort: Soonest departure</option>
+      <option value="time">Sort: Time of day</option>
+      <option value="flight">Sort: Flight number</option>
+    </select>
     <span class="rn-filter-count" id="rnFilterCount"></span>
   </div>
 </section>

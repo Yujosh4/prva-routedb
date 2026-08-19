@@ -1,6 +1,6 @@
 import { supabase } from "./supabase-client.js";
 import { requireStaffSession } from "./auth-guard.js";
-import { CAREER_AIRLINES, ALL_DAYS as DAYS, assignPlausibleSchedule, assignPlausibleTerminal } from "./career-autofill.js";
+import { CAREER_AIRLINES, ALL_DAYS as DAYS, assignPlausibleSchedule, assignPlausibleTerminal, hashString } from "./career-autofill.js";
 
 await requireStaffSession();
 
@@ -11,6 +11,9 @@ const tableWrap = document.getElementById("csTableWrap");
 const searchInput = document.getElementById("csSearch");
 const autoFillBtn = document.getElementById("autoFillBtn");
 const autoFillStatus = document.getElementById("autoFillStatus");
+const rosterCapInput = document.getElementById("csRosterCap");
+const generateRosterBtn = document.getElementById("csGenerateRosterBtn");
+const rosterStatus = document.getElementById("csRosterStatus");
 
 let routes = [];
 let schedulesByRoute = new Map();
@@ -40,7 +43,7 @@ async function loadAll() {
 
   const { data: scheduleRows, error: schedErr } = await supabase
     .from("career_schedules")
-    .select("id, route_id, departure_time_local, days_of_week, active, gate, terminal, source, notes");
+    .select("id, route_id, departure_time_local, days_of_week, active, gate, terminal, in_career_mode, source, notes");
   if (schedErr) throw schedErr;
 
   routes = routeRows;
@@ -52,11 +55,13 @@ function renderSummary() {
   const suspended = scheduled.filter((r) => schedulesByRoute.get(r.id).active === false);
   const active = scheduled.filter((r) => schedulesByRoute.get(r.id).active !== false);
   const unscheduled = routes.length - scheduled.length;
+  const inRoster = scheduled.filter((r) => schedulesByRoute.get(r.id).in_career_mode).length;
   summaryEl.innerHTML = `
     <div><strong>${routes.length}</strong><div style="font-size:11px;color:var(--muted);">total routes</div></div>
     <div><strong>${active.length}</strong><div style="font-size:11px;color:var(--muted);">scheduled &amp; active</div></div>
     <div><strong>${suspended.length}</strong><div style="font-size:11px;color:var(--muted);">suspended</div></div>
-    <div><strong>${unscheduled}</strong><div style="font-size:11px;color:var(--muted);">not yet scheduled</div></div>`;
+    <div><strong>${unscheduled}</strong><div style="font-size:11px;color:var(--muted);">not yet scheduled</div></div>
+    <div><strong>${inRoster}</strong><div style="font-size:11px;color:var(--muted);">in Career Mode roster</div></div>`;
 }
 
 function rowHtml(route) {
@@ -73,6 +78,7 @@ function rowHtml(route) {
         ${DAYS.map((d) => `<label><span>${DAY_LABELS[d]}</span><input type="checkbox" class="cs-day" value="${d}" ${days.has(d) ? "checked" : ""}></label>`).join("")}
       </div></td>
       <td><input type="checkbox" class="cs-active" ${s?.active === false ? "" : "checked"}> Active</td>
+      <td><input type="checkbox" class="cs-in-career-mode" ${s?.in_career_mode ? "checked" : ""} ${!s ? "disabled" : ""}></td>
       <td><input type="text" class="cs-gate" value="${escapeHtml(s?.gate || "")}" placeholder="e.g. 24" style="width:60px;"></td>
       <td><select class="cs-terminal" style="width:75px;">
         <option value="" ${!s?.terminal ? "selected" : ""}>TBD</option>
@@ -89,7 +95,7 @@ function renderTable(filtered) {
   tableWrap.innerHTML = `
     <table class="cs-table">
       <thead><tr>
-        <th>Flight</th><th>Route</th><th>Time (local)</th><th>Days</th><th>Active</th><th>Gate</th><th>Term.</th><th>Notes</th><th>Source</th><th></th>
+        <th>Flight</th><th>Route</th><th>Time (local)</th><th>Days</th><th>Active</th><th>In CM</th><th>Gate</th><th>Term.</th><th>Notes</th><th>Source</th><th></th>
       </tr></thead>
       <tbody>${filtered.map(rowHtml).join("")}</tbody>
     </table>`;
@@ -115,6 +121,7 @@ async function saveRow(routeId, tr) {
   }
   const days = [...tr.querySelectorAll(".cs-day:checked")].map((cb) => Number(cb.value));
   const active = tr.querySelector(".cs-active").checked;
+  const inCareerMode = tr.querySelector(".cs-in-career-mode").checked;
   const gate = tr.querySelector(".cs-gate").value.trim();
   const terminal = tr.querySelector(".cs-terminal").value.trim();
   const notes = tr.querySelector(".cs-notes").value.trim();
@@ -126,6 +133,7 @@ async function saveRow(routeId, tr) {
     departure_time_local: time + ":00",
     days_of_week: days.length ? days : DAYS,
     active,
+    in_career_mode: inCareerMode,
     gate: gate || null,
     terminal: terminal || null,
     source: existing?.source === "real_world_api" ? "real_world_api" : "manual",
@@ -187,6 +195,54 @@ autoFillBtn.addEventListener("click", async () => {
   data.forEach((row) => schedulesByRoute.set(row.route_id, row));
   autoFillStatus.textContent = `Assigned times to ${data.length} routes.`;
   autoFillStatus.className = "rn-sb-status success";
+  renderSummary();
+  applySearch();
+});
+
+generateRosterBtn.addEventListener("click", async () => {
+  const cap = Math.max(1, parseInt(rosterCapInput.value, 10) || 50);
+  const eligible = routes.filter((r) => schedulesByRoute.has(r.id));
+  if (!eligible.length) {
+    rosterStatus.textContent = "No scheduled routes yet -- use Auto-Fill first.";
+    rosterStatus.className = "rn-sb-status error";
+    return;
+  }
+
+  generateRosterBtn.disabled = true;
+  rosterStatus.textContent = "Generating…";
+  rosterStatus.className = "rn-sb-status";
+
+  // Seeded by the current year-month, not pure randomness, so re-clicking
+  // within the same month reproduces the same roster instead of reshuffling
+  // it every time -- and next month's click naturally gives fresh variety.
+  const monthSeed = new Date().toISOString().slice(0, 7);
+  const ranked = [...eligible].sort(
+    (a, b) => hashString(a.flight_number + ":" + monthSeed) - hashString(b.flight_number + ":" + monthSeed)
+  );
+  const selected = new Set(ranked.slice(0, cap).map((r) => r.id));
+
+  const inIds = eligible.filter((r) => selected.has(r.id)).map((r) => schedulesByRoute.get(r.id).id);
+  const outIds = eligible.filter((r) => !selected.has(r.id)).map((r) => schedulesByRoute.get(r.id).id);
+
+  const [inRes, outRes] = await Promise.all([
+    inIds.length ? supabase.from("career_schedules").update({ in_career_mode: true }).in("id", inIds) : Promise.resolve({}),
+    outIds.length ? supabase.from("career_schedules").update({ in_career_mode: false }).in("id", outIds) : Promise.resolve({}),
+  ]);
+
+  generateRosterBtn.disabled = false;
+  if (inRes.error || outRes.error) {
+    rosterStatus.textContent = "Couldn't generate roster: " + (inRes.error || outRes.error).message;
+    rosterStatus.className = "rn-sb-status error";
+    return;
+  }
+
+  eligible.forEach((r) => {
+    const s = schedulesByRoute.get(r.id);
+    schedulesByRoute.set(r.id, { ...s, in_career_mode: selected.has(r.id) });
+  });
+
+  rosterStatus.textContent = `Roster set: ${inIds.length} route${inIds.length === 1 ? "" : "s"} now in Career Mode (cap ${cap}).`;
+  rosterStatus.className = "rn-sb-status success";
   renderSummary();
   applySearch();
 });
