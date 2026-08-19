@@ -42,12 +42,16 @@ function isInRoster(scheduleId, month) {
   return rosterByScheduleMonth.get(scheduleId)?.has(month) || false;
 }
 
+// A rolling year of months, current month first, shown by their actual
+// name -- no "This Month"/"Next Month" relative labels, so there's no
+// separate "which one is current" state to keep in sync with the label.
 function populateRosterMonthOptions() {
-  const thisMonth = yearMonthInfo(0);
-  const nextMonth = yearMonthInfo(1);
-  rosterMonthSelect.innerHTML = `
-    <option value="${thisMonth.value}">This Month (${thisMonth.label})</option>
-    <option value="${nextMonth.value}">Next Month (${nextMonth.label})</option>`;
+  const options = [];
+  for (let i = 0; i < 12; i++) {
+    const info = yearMonthInfo(i);
+    options.push(`<option value="${info.value}">${info.label}</option>`);
+  }
+  rosterMonthSelect.innerHTML = options.join("");
 }
 
 async function loadAll() {

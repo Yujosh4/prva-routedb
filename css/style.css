@@ -384,11 +384,11 @@ button{ font-family: inherit; }
    (list cards, day-list modal, flight details modal). */
 .cal-flight-chip.cal-urgency-soon{ border-left: 3px solid #e6a532; }
 .cal-flight-chip.cal-urgency-critical{ border-left: 3px solid var(--red-500); font-weight: 700; }
-.cal-flight-chip.cal-urgency-departed{ opacity: .55; }
+.cal-flight-chip.cal-urgency-departed{ opacity: .55; text-decoration: line-through; }
 .rn-tag.cal-urgency-tag{ font-weight: 700; }
 .rn-tag.cal-urgency-soon{ background: #fff4e0; border-color: #e6a532; color: #8a5a00; }
 .rn-tag.cal-urgency-critical{ background: #ffe1e1; border-color: var(--red-500); color: var(--red-700); }
-.rn-tag.cal-urgency-departed{ background: var(--bg-soft); color: var(--muted); }
+.rn-tag.cal-urgency-departed{ background: var(--bg-soft); color: var(--muted); text-decoration: line-through; }
 dd.cal-urgency-soon{ color: #8a5a00; font-weight: 700; }
 dd.cal-urgency-critical{ color: var(--red-700); font-weight: 700; }
 dd.cal-urgency-departed{ color: var(--muted); }

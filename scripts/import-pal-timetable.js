@@ -95,7 +95,7 @@ async function main() {
   if (airlinesErr) throw airlinesErr;
   const airlineIdByName = new Map(airlines.map((a) => [a.name, a.id]));
 
-  let updated = 0, unmatchedRoute = 0, noSchedule = 0, badFrequency = 0;
+  let updated = 0, unmatchedRoute = 0, noSchedule = 0, badFrequency = 0, duplicateFlightNumbers = 0;
 
   for (const [flightNumber, rows] of byFlight) {
     const primary = pickPrimary(rows);
@@ -106,41 +106,48 @@ async function main() {
       continue;
     }
 
+    // Flight numbers aren't always unique within an airline -- some spreadsheet
+    // imports have the same number on more than one route row (different legs/
+    // dates). Apply the same real time/days to every route sharing that number
+    // rather than assuming exactly one match.
     const airlineId = airlineIdByName.get(airlineForFlightNumber(flightNumber));
-    const { data: route, error: routeErr } = await supabase
+    const { data: matchingRoutes, error: routeErr } = await supabase
       .from("routes").select("id")
       .eq("flight_number", flightNumber).eq("airline_id", airlineId)
-      .eq("category", "current").eq("active", true)
-      .maybeSingle();
+      .eq("category", "current").eq("active", true);
     if (routeErr) throw routeErr;
-    if (!route) {
+    if (!matchingRoutes?.length) {
       unmatchedRoute++;
       continue;
     }
+    if (matchingRoutes.length > 1) duplicateFlightNumbers++;
 
-    const { data: existing, error: existingErr } = await supabase
-      .from("career_schedules").select("id")
-      .eq("route_id", route.id).maybeSingle();
-    if (existingErr) throw existingErr;
-    if (!existing) {
-      noSchedule++;
-      continue;
+    for (const route of matchingRoutes) {
+      const { data: existing, error: existingErr } = await supabase
+        .from("career_schedules").select("id")
+        .eq("route_id", route.id);
+      if (existingErr) throw existingErr;
+      if (!existing?.length) {
+        noSchedule++;
+        continue;
+      }
+
+      const { error: updErr } = await supabase.from("career_schedules").update({
+        departure_time_local: primary.departTime + ":00",
+        days_of_week: days,
+        source: "real_world_pdf",
+        notes: "From PAL's published summer timetable (as of Jul 29, 2026).",
+      }).in("id", existing.map((s) => s.id));
+      if (updErr) throw updErr;
+      updated += existing.length;
     }
-
-    const { error: updErr } = await supabase.from("career_schedules").update({
-      departure_time_local: primary.departTime + ":00",
-      days_of_week: days,
-      source: "real_world_pdf",
-      notes: "From PAL's published summer timetable (as of Jul 29, 2026).",
-    }).eq("id", existing.id);
-    if (updErr) throw updErr;
-    updated++;
   }
 
   console.log(`\nUpdated ${updated} schedule rows with real departure times/days.`);
   console.log(`${unmatchedRoute} flight numbers had no matching route in the database.`);
-  console.log(`${noSchedule} flight numbers matched a route but had no schedule row yet -- run Auto-Fill first, then re-run this script.`);
+  console.log(`${noSchedule} route(s) matched a flight number but had no schedule row yet -- run Auto-Fill first, then re-run this script.`);
   console.log(`${badFrequency} rows had frequency text that couldn't be parsed into days.`);
+  console.log(`${duplicateFlightNumbers} flight numbers matched more than one route -- the same real time/days were applied to all of them.`);
 }
 
 main().catch((err) => {

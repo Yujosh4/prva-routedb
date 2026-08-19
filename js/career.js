@@ -417,17 +417,23 @@ function renderCalendar() {
         <div class="cal-day-flights">
           ${visible
             .map((e) => {
-              // Only "today" at the airport's own clock earns urgency styling --
-              // matching weekday on some other week of the month must not.
-              // Kept as a slim left-border accent (not a full background fill)
-              // and no inline countdown text, so a busy day doesn't read as a
-              // wall of red -- the full countdown is one click away.
+              // Only "today" at the airport's own clock earns live urgency
+              // styling -- matching weekday on some other week of the month
+              // must not. A day that's fully in the past isn't "counting
+              // down" to anything either, so every flight shown on it is
+              // just marked departed outright. Kept as a slim left-border
+              // accent (not a full background fill) and no inline countdown
+              // text, so a busy day doesn't read as a wall of red -- the
+              // full countdown is one click away.
+              const isPast = !todayCell && isPastDateKey(dateKey);
               const minutes = todayCell ? entryCountdownMinutes(e) : null;
               const disruption = todayCell ? entryDisruptionToday(e) : entryDisruptionForDate(e, dateKey);
-              const cls = [minutes !== null ? urgencyClass(minutes) : "", disruptionClass(disruption.status)].filter(Boolean).join(" ");
+              const urgencyCls = isPast ? "cal-urgency-departed" : minutes !== null ? urgencyClass(minutes) : "";
+              const cls = [urgencyCls, disruptionClass(disruption.status)].filter(Boolean).join(" ");
               const disruptionLbl = disruptionLabel(disruption);
               const titleParts = [`${e.route.flight_number} ${formatTime12h(e.departure_time_local)}`];
               if (disruptionLbl) titleParts.push(disruptionLbl);
+              else if (isPast) titleParts.push("Already departed");
               else if (minutes !== null) titleParts.push(formatCountdown(minutes));
               const title = titleParts.join(" -- ");
               return `<span class="cal-flight-chip ${cls}" data-entry="${escapeHtml(e.id)}" title="${escapeHtml(title)}">${escapeHtml(e.route.flight_number)} ${escapeHtml(formatTime12h(e.departure_time_local))}</span>`;
@@ -475,14 +481,23 @@ function renderCalendar() {
   });
 }
 
-function isViewerToday(dateKey) {
+function todayDateKeyForViewer() {
   const now = new Date();
-  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  return dateKey === todayKey;
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function isViewerToday(dateKey) {
+  return dateKey === todayDateKeyForViewer();
+}
+
+// String comparison works because dateKey is always zero-padded 'YYYY-MM-DD'.
+function isPastDateKey(dateKey) {
+  return dateKey < todayDateKeyForViewer();
 }
 
 function openDayListModal(dayLabel, entries, dateKey) {
   const isTodayDate = isViewerToday(dateKey);
+  const isPast = !isTodayDate && isPastDateKey(dateKey);
   calDayModalBody.innerHTML = `
     <h2>${escapeHtml(dayLabel)}'s Flights</h2>
     <div class="rn-modal-section">
@@ -492,8 +507,9 @@ function openDayListModal(dayLabel, entries, dateKey) {
           const minutes = disruption.status === "cancelled" ? null : entryCountdownMinutes(e);
           const disruptionLbl = disruptionLabel(disruption);
           const gt = [e.terminal ? `T${e.terminal}` : "", e.gate ? `Gate ${e.gate}` : ""].filter(Boolean).join(" / ");
+          const rowStyle = isPast ? "opacity:.55; text-decoration:line-through;" : "";
           return `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line);">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line); ${rowStyle}">
           <div>
             <strong>${escapeHtml(e.route.flight_number)}</strong>
             <span style="color:var(--muted); font-size:13px;"> -- ${escapeHtml(e.route.origin?.icao)} &rarr; ${escapeHtml(e.route.destination?.icao)}</span>
@@ -501,7 +517,8 @@ function openDayListModal(dayLabel, entries, dateKey) {
             ${disruptionLbl ? `<span class="rn-tag ${disruptionClass(disruption.status)}" style="margin-top:4px; display:inline-block;">${escapeHtml(disruptionLbl)}</span>` : ""}
           </div>
           <div style="display:flex; align-items:center; gap:10px;">
-            ${minutes !== null ? `<span class="rn-tag cal-urgency-tag ${urgencyClass(minutes)}">${escapeHtml(formatCountdown(minutes))}</span>` : ""}
+            ${isPast ? `<span class="rn-tag cal-urgency-tag cal-urgency-departed">Already departed</span>` : ""}
+            ${!isPast && minutes !== null ? `<span class="rn-tag cal-urgency-tag ${urgencyClass(minutes)}">${escapeHtml(formatCountdown(minutes))}</span>` : ""}
             <span style="font-size:13px;">${escapeHtml(formatTime12h(e.departure_time_local))}</span>
             <button type="button" class="btn btn-outline" data-daylist-entry="${escapeHtml(e.id)}">Details</button>
           </div>
