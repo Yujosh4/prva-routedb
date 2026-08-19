@@ -20,8 +20,18 @@ const previewTableWrap = document.getElementById("previewTableWrap");
 const importBtn = document.getElementById("importBtn");
 const importStatus = document.getElementById("importStatus");
 
+const deleteAirlineSelect = document.getElementById("deleteAirlineSelect");
+const deleteCategorySelect = document.getElementById("deleteCategorySelect");
+const deletePreviewBtn = document.getElementById("deletePreviewBtn");
+const deletePreviewStatus = document.getElementById("deletePreviewStatus");
+const deleteConfirmRow = document.getElementById("deleteConfirmRow");
+const deleteConfirmInput = document.getElementById("deleteConfirmInput");
+const deleteConfirmBtn = document.getElementById("deleteConfirmBtn");
+const deleteStatus = document.getElementById("deleteStatus");
+
 let workbook = null;
 let parsedRows = []; // includes both valid and invalid rows, for the preview table
+let pendingDelete = null; // { airlineId, airlineName, category, routeIds } from the last Preview Count
 
 // ---------- Airlines ----------
 async function loadAirlines(selectId) {
@@ -31,11 +41,107 @@ async function loadAirlines(selectId) {
     airlineStatus.className = "rn-sb-status error";
     return;
   }
-  airlineSelect.innerHTML = data
-    .map((a) => `<option value="${a.id}">${a.name}${a.is_mainline ? " (Mainline)" : ""}</option>`)
+  const options = data
+    .map((a) => `<option value="${a.id}" data-name="${a.name.replace(/"/g, "&quot;")}">${a.name}${a.is_mainline ? " (Mainline)" : ""}</option>`)
     .join("");
+  airlineSelect.innerHTML = options;
+  deleteAirlineSelect.innerHTML = options;
   if (selectId) airlineSelect.value = selectId;
 }
+
+// ---------- Danger Zone: delete routes for an airline ----------
+function resetDeleteConfirm() {
+  pendingDelete = null;
+  deleteConfirmRow.style.display = "none";
+  deleteConfirmInput.value = "";
+  deleteConfirmBtn.disabled = true;
+}
+
+[deleteAirlineSelect, deleteCategorySelect].forEach((el) => el.addEventListener("change", resetDeleteConfirm));
+
+deletePreviewBtn.addEventListener("click", async () => {
+  const airlineId = deleteAirlineSelect.value;
+  const airlineOption = deleteAirlineSelect.selectedOptions[0];
+  if (!airlineId || !airlineOption) return;
+  const airlineName = airlineOption.dataset.name;
+  const category = deleteCategorySelect.value;
+
+  deletePreviewStatus.textContent = "Counting…";
+  deletePreviewStatus.className = "rn-sb-status";
+  resetDeleteConfirm();
+
+  let query = supabase.from("routes").select("id").eq("airline_id", airlineId);
+  if (category !== "all") query = query.eq("category", category);
+  const { data: routes, error } = await query;
+  if (error) {
+    deletePreviewStatus.textContent = "Couldn't count routes: " + error.message;
+    deletePreviewStatus.className = "rn-sb-status error";
+    return;
+  }
+
+  const routeIds = routes.map((r) => r.id);
+  let scheduleCount = 0;
+  if (routeIds.length) {
+    const { count, error: schedErr } = await supabase
+      .from("career_schedules").select("id", { count: "exact", head: true }).in("route_id", routeIds);
+    if (schedErr) {
+      deletePreviewStatus.textContent = "Couldn't count Career Mode schedules: " + schedErr.message;
+      deletePreviewStatus.className = "rn-sb-status error";
+      return;
+    }
+    scheduleCount = count || 0;
+  }
+
+  if (!routeIds.length) {
+    deletePreviewStatus.textContent = `No ${category === "all" ? "" : category + " "}routes found for ${airlineName}.`;
+    deletePreviewStatus.className = "rn-sb-status";
+    return;
+  }
+
+  deletePreviewStatus.textContent =
+    `This will permanently delete ${routeIds.length} route${routeIds.length === 1 ? "" : "s"} and ` +
+    `${scheduleCount} Career Mode schedule${scheduleCount === 1 ? "" : "s"} for ${airlineName}.`;
+  deletePreviewStatus.className = "rn-sb-status";
+
+  pendingDelete = { airlineId, airlineName, category, routeIds };
+  deleteConfirmRow.style.display = "flex";
+});
+
+deleteConfirmInput.addEventListener("input", () => {
+  deleteConfirmBtn.disabled = !pendingDelete || deleteConfirmInput.value.trim() !== pendingDelete.airlineName;
+});
+
+deleteConfirmBtn.addEventListener("click", async () => {
+  if (!pendingDelete) return;
+  const { airlineName, routeIds } = pendingDelete;
+
+  deleteConfirmBtn.disabled = true;
+  deleteStatus.textContent = `Deleting ${routeIds.length} routes for ${airlineName}…`;
+  deleteStatus.className = "rn-sb-status";
+
+  // career_schedules.route_id references routes.id with no cascade, so
+  // schedule rows must go first or the route delete fails on the FK.
+  const { error: schedErr } = await supabase.from("career_schedules").delete().in("route_id", routeIds);
+  if (schedErr) {
+    deleteStatus.textContent = "Couldn't delete Career Mode schedules: " + schedErr.message;
+    deleteStatus.className = "rn-sb-status error";
+    deleteConfirmBtn.disabled = false;
+    return;
+  }
+
+  const { error: routeErr } = await supabase.from("routes").delete().in("id", routeIds);
+  if (routeErr) {
+    deleteStatus.textContent = "Couldn't delete routes: " + routeErr.message;
+    deleteStatus.className = "rn-sb-status error";
+    deleteConfirmBtn.disabled = false;
+    return;
+  }
+
+  deleteStatus.textContent = `Deleted ${routeIds.length} routes for ${airlineName}. Ready for a fresh import above.`;
+  deleteStatus.className = "rn-sb-status success";
+  deletePreviewStatus.textContent = "";
+  resetDeleteConfirm();
+});
 
 createAirlineBtn.addEventListener("click", async () => {
   const name = newAirlineName.value.trim();

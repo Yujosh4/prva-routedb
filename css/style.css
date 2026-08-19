@@ -357,6 +357,8 @@ button{ font-family: inherit; }
 }
 .cal-day.cal-day-empty{ background: var(--bg-soft); border-style: dashed; }
 .cal-day.cal-day-today{ border-color: var(--red-600); border-width: 2px; }
+.cal-day.cal-has-flights{ cursor: pointer; }
+.cal-day.cal-has-flights:hover{ border-color: var(--red-500); box-shadow: var(--shadow-card); }
 .cal-day-num{ font-size: 12px; font-weight: 700; color: var(--muted); }
 .cal-day-flights{ display: flex; flex-direction: column; gap: 3px; overflow: hidden; }
 .cal-flight-chip{
@@ -372,6 +374,24 @@ button{ font-family: inherit; }
 }
 .cal-flight-chip:hover{ border-color: var(--red-500); }
 .cal-day-more{ font-size: 10px; color: var(--muted); cursor: pointer; text-decoration: underline; }
+
+/* Urgency states -- how close a flight is to its effective (buffered)
+   departure time, computed at the origin airport's own local clock.
+   On calendar chips (high-density -- up to 3 per day) this is kept to a
+   slim left-border accent rather than a full background fill, so a day
+   full of flights doesn't read as a wall of red. Full-color badges are
+   reserved for lower-density contexts the pilot already clicked into
+   (list cards, day-list modal, flight details modal). */
+.cal-flight-chip.cal-urgency-soon{ border-left: 3px solid #e6a532; }
+.cal-flight-chip.cal-urgency-critical{ border-left: 3px solid var(--red-500); font-weight: 700; }
+.cal-flight-chip.cal-urgency-departed{ opacity: .55; }
+.rn-tag.cal-urgency-tag{ font-weight: 700; }
+.rn-tag.cal-urgency-soon{ background: #fff4e0; border-color: #e6a532; color: #8a5a00; }
+.rn-tag.cal-urgency-critical{ background: #ffe1e1; border-color: var(--red-500); color: var(--red-700); }
+.rn-tag.cal-urgency-departed{ background: var(--bg-soft); color: var(--muted); }
+dd.cal-urgency-soon{ color: #8a5a00; font-weight: 700; }
+dd.cal-urgency-critical{ color: var(--red-700); font-weight: 700; }
+dd.cal-urgency-departed{ color: var(--muted); }
 
 @media (max-width: 640px){
   .cal-grid{ grid-template-columns: repeat(7, minmax(38px, 1fr)); gap: 3px; }

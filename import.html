@@ -98,6 +98,38 @@
       <div class="rn-sb-status" id="importStatus"></div>
     </div>
   </div>
+
+  <div class="imp-section" style="border-color:#f3c6c6;">
+    <h3 style="color:var(--red-600);">Danger Zone -- Delete Routes</h3>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:14px; max-width:640px;">
+      Permanently deletes routes for one airline (and any Career Mode schedules for them), so you can
+      re-import a corrected spreadsheet from scratch. This cannot be undone -- use "Preview Count" first.
+    </p>
+    <div class="imp-row">
+      <div class="imp-field">
+        <label for="deleteAirlineSelect">Airline</label>
+        <select id="deleteAirlineSelect"></select>
+      </div>
+      <div class="imp-field">
+        <label for="deleteCategorySelect">Which routes</label>
+        <select id="deleteCategorySelect">
+          <option value="current">Current only</option>
+          <option value="historic">Historic only</option>
+          <option value="all">Current + Historic (everything)</option>
+        </select>
+      </div>
+      <button type="button" class="btn btn-outline" id="deletePreviewBtn" style="flex:0 0 auto;">Preview Count</button>
+    </div>
+    <div class="rn-sb-status" id="deletePreviewStatus"></div>
+    <div class="imp-row" id="deleteConfirmRow" style="display:none; margin-top:10px;">
+      <div class="imp-field">
+        <label for="deleteConfirmInput">Type the airline name exactly to confirm</label>
+        <input type="text" id="deleteConfirmInput" placeholder="Exact airline name" autocomplete="off">
+      </div>
+      <button type="button" class="btn btn-primary" id="deleteConfirmBtn" style="flex:0 0 auto; background:var(--red-600); border-color:var(--red-600);" disabled>Delete Routes</button>
+    </div>
+    <div class="rn-sb-status" id="deleteStatus"></div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>

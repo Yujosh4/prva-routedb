@@ -28,10 +28,46 @@ export function assignPlausibleTime(flightNumber, distanceNm) {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`;
 }
 
+// Day-of-week patterns, ISO numbering (1=Mon..7=Sun). Not every real route
+// flies daily -- thin regional routes especially don't -- so defaulting
+// every auto-scheduled route to all 7 days was both unrealistic and the
+// reason the calendar felt like every single flight showed up every day.
+const DAILY = [1, 2, 3, 4, 5, 6, 7];
+const SIX_SKIP_SUN = [1, 2, 3, 4, 5, 6];
+const SIX_SKIP_WED = [1, 2, 4, 5, 6, 7];
+const WEEKDAYS = [1, 2, 3, 4, 5];
+const FOUR_SPREAD = [1, 3, 5, 7];
+const MON_WED_FRI = [1, 3, 5];
+const TUE_THU_SAT = [2, 4, 6];
+const WEEKEND_LEISURE = [5, 6, 7];
+
+// Long-haul routes in real fleets are almost always daily or near-daily;
+// short/regional routes vary a lot more, down to a few times a week.
+function dayPatternPool(distanceNm) {
+  const d = distanceNm || 0;
+  if (d > 3000) return [DAILY, DAILY, DAILY, SIX_SKIP_SUN, SIX_SKIP_WED];
+  if (d > 800) return [DAILY, DAILY, SIX_SKIP_SUN, SIX_SKIP_WED, FOUR_SPREAD, WEEKDAYS];
+  return [DAILY, SIX_SKIP_SUN, FOUR_SPREAD, MON_WED_FRI, TUE_THU_SAT, WEEKDAYS, WEEKEND_LEISURE];
+}
+
+export function assignPlausibleDays(flightNumber, distanceNm) {
+  const hash = hashString(flightNumber + ":days");
+  const pool = dayPatternPool(distanceNm);
+  return pool[hash % pool.length];
+}
+
+export function assignPlausibleSchedule(flightNumber, distanceNm) {
+  return {
+    departure_time_local: assignPlausibleTime(flightNumber, distanceNm),
+    days_of_week: assignPlausibleDays(flightNumber, distanceNm),
+  };
+}
+
 // Creates career_schedules rows for any of the given routes that don't
 // already have one, for the airlines Career Mode covers. Silently no-ops
-// for routes on other airlines or that are already scheduled -- safe to
-// call after every import without needing to check anything first.
+// for routes on other airlines, routes that are historic/inactive, or
+// routes that are already scheduled -- safe to call after every import
+// without needing to check anything first.
 export async function autoScheduleNewRoutes(supabase, insertedRoutes) {
   if (!insertedRoutes?.length) return { scheduled: 0 };
 
@@ -40,7 +76,12 @@ export async function autoScheduleNewRoutes(supabase, insertedRoutes) {
   if (airlinesErr || !airlines?.length) return { scheduled: 0, error: airlinesErr };
   const careerAirlineIds = new Set(airlines.map((a) => a.id));
 
-  const eligible = insertedRoutes.filter((r) => careerAirlineIds.has(r.airline_id));
+  // Career Mode only covers routes actually being flown right now -- a
+  // suspended or historic route shouldn't get a fabricated recurring
+  // schedule just because it happened to be part of an import batch.
+  const eligible = insertedRoutes.filter(
+    (r) => careerAirlineIds.has(r.airline_id) && r.category === "current" && r.active !== false
+  );
   if (!eligible.length) return { scheduled: 0 };
 
   const routeIds = eligible.map((r) => r.id);
@@ -54,8 +95,7 @@ export async function autoScheduleNewRoutes(supabase, insertedRoutes) {
     .map((r) => ({
       route_id: r.id,
       airline_id: r.airline_id,
-      departure_time_local: assignPlausibleTime(r.flight_number, r.distance_nm),
-      days_of_week: ALL_DAYS,
+      ...assignPlausibleSchedule(r.flight_number, r.distance_nm),
       active: true,
       source: "derived",
       notes: "Auto-assigned at import time -- not sourced from real-world data.",

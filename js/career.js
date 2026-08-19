@@ -1,5 +1,6 @@
 import { supabase } from "./supabase-client.js";
 import { initRouteModal } from "./route-modal.js";
+import { minutesToEffectiveDeparture, urgencyClass, formatCountdown } from "./career-time.js";
 
 const grid = document.getElementById("rnGrid");
 const filterCount = document.getElementById("rnFilterCount");
@@ -36,6 +37,7 @@ const SAMPLE_ENTRIES = [
     id: "sample-cs-1",
     departure_time_local: "06:15:00",
     days_of_week: [1, 2, 3, 4, 5, 6, 7],
+    gate: "24", terminal: "2",
     route: {
       id: "sample-1", flight_number: "PR102", aircraft_types: ["B777-300ER"], liveries: ["Philippine Airlines"],
       distance_nm: 6339, flight_time_minutes: 745, category: "current",
@@ -62,7 +64,7 @@ async function loadSchedule() {
     const { data, error } = await supabase
       .from("career_schedules")
       .select(
-        `id, departure_time_local, days_of_week, source, notes,
+        `id, departure_time_local, days_of_week, gate, terminal, source, notes,
          route:routes(id, flight_number, aircraft_types, liveries, distance_nm, flight_time_minutes, category,
            origin:airports!routes_origin_icao_fkey(icao, iata, name, city),
            destination:airports!routes_destination_icao_fkey(icao, iata, name, city)),
@@ -94,6 +96,27 @@ function formatDays(days) {
 function formatFlightTime(minutes) {
   if (!minutes) return "—";
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+// Only returns a value when this entry operates on the origin airport's
+// current local weekday -- a countdown to a day that isn't "today" there
+// isn't meaningful, so it's simply omitted rather than shown wrong.
+function entryCountdownMinutes(entry) {
+  return minutesToEffectiveDeparture(entry.route.origin?.icao, entry.departure_time_local, entry.days_of_week);
+}
+
+function countdownBadgeHtml(entry) {
+  const minutes = entryCountdownMinutes(entry);
+  if (minutes === null) return "";
+  return `<span class="rn-tag cal-urgency-tag ${urgencyClass(minutes)}">${escapeHtml(formatCountdown(minutes))}</span>`;
+}
+
+function gateTerminalHtml(entry) {
+  if (!entry.gate && !entry.terminal) return "";
+  const parts = [];
+  if (entry.terminal) parts.push(`Terminal ${escapeHtml(entry.terminal)}`);
+  if (entry.gate) parts.push(`Gate ${escapeHtml(entry.gate)}`);
+  return `<span class="rn-tag">${parts.join(" &middot; ")}</span>`;
 }
 
 function populateFilterOptions(entries) {
@@ -154,6 +177,8 @@ function entryCardHtml(entry) {
         <span class="rn-tag">${escapeHtml(formatTime12h(entry.departure_time_local))} local</span>
         <span class="rn-tag">${escapeHtml(formatDays(entry.days_of_week))}</span>
         <span class="rn-tag">${formatFlightTime(r.flight_time_minutes)}</span>
+        ${gateTerminalHtml(entry)}
+        ${countdownBadgeHtml(entry)}
       </div>
       <div class="rn-card-actions">
         <button type="button" class="btn btn-outline" data-details="${escapeHtml(entry.id)}">More Details</button>
@@ -187,9 +212,13 @@ function openEntryDetails(entry) {
   // The shared modal (route-modal.js) works on plain route objects -- flatten
   // this schedule entry into that shape, adding a careerInfo block for the
   // extra schedule-specific fields it doesn't otherwise know about.
+  const minutes = entryCountdownMinutes(entry);
   const careerInfo = `
     <div><dt>Scheduled Departure</dt><dd>${escapeHtml(formatTime12h(entry.departure_time_local))} local</dd></div>
     <div><dt>Operates</dt><dd>${escapeHtml(formatDays(entry.days_of_week))}</dd></div>
+    ${entry.terminal ? `<div><dt>Terminal</dt><dd>${escapeHtml(entry.terminal)}</dd></div>` : ""}
+    ${entry.gate ? `<div><dt>Gate</dt><dd>${escapeHtml(entry.gate)}</dd></div>` : ""}
+    ${minutes !== null ? `<div><dt>Countdown</dt><dd class="${urgencyClass(minutes)}">${escapeHtml(formatCountdown(minutes))} (incl. 5min buffer)</dd></div>` : ""}
     ${entry.min_rank ? `<div><dt>Minimum Rank</dt><dd>${escapeHtml(entry.min_rank.name)}</dd></div>` : ""}
   `;
   openModal({ ...entry.route, airline: entry.airline, careerInfo });
@@ -251,15 +280,46 @@ function renderCalendar() {
     const dayEntries = filtered
       .filter((e) => (e.days_of_week || []).includes(weekday))
       .sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
+    const todayCell = isToday(day);
 
-    const visible = dayEntries.slice(0, MAX_CHIPS_PER_DAY);
+    // On today's cell specifically, the 3 visible slots should be whichever
+    // flights are actually still relevant -- not just whichever happen to
+    // have the earliest clock time, which as the day goes on increasingly
+    // means "already departed hours ago" while the flights someone might
+    // actually want to fly sit buried behind "+N more".
+    const displayOrder = todayCell
+      ? [...dayEntries].sort((a, b) => {
+          const ma = entryCountdownMinutes(a);
+          const mb = entryCountdownMinutes(b);
+          const aDeparted = ma !== null && ma <= 0;
+          const bDeparted = mb !== null && mb <= 0;
+          if (aDeparted !== bDeparted) return aDeparted ? 1 : -1;
+          return a.departure_time_local.localeCompare(b.departure_time_local);
+        })
+      : dayEntries;
+
+    const visible = displayOrder.slice(0, MAX_CHIPS_PER_DAY);
     const overflow = dayEntries.length - visible.length;
 
     html += `
-      <div class="cal-day ${isToday(day) ? "cal-day-today" : ""} ${dayEntries.length ? "cal-has-flights" : ""}">
+      <div class="cal-day ${todayCell ? "cal-day-today" : ""} ${dayEntries.length ? "cal-has-flights" : ""}" ${dayEntries.length ? `data-daycell="${weekday}"` : ""}>
         <span class="cal-day-num">${day}</span>
         <div class="cal-day-flights">
-          ${visible.map((e) => `<span class="cal-flight-chip" data-entry="${escapeHtml(e.id)}" title="${escapeHtml(e.route.flight_number)} ${escapeHtml(formatTime12h(e.departure_time_local))}">${escapeHtml(e.route.flight_number)} ${escapeHtml(formatTime12h(e.departure_time_local))}</span>`).join("")}
+          ${visible
+            .map((e) => {
+              // Only "today" at the airport's own clock earns urgency styling --
+              // matching weekday on some other week of the month must not.
+              // Kept as a slim left-border accent (not a full background fill)
+              // and no inline countdown text, so a busy day doesn't read as a
+              // wall of red -- the full countdown is one click away.
+              const minutes = todayCell ? entryCountdownMinutes(e) : null;
+              const cls = minutes !== null ? urgencyClass(minutes) : "";
+              const title = minutes !== null
+                ? `${e.route.flight_number} ${formatTime12h(e.departure_time_local)} -- ${formatCountdown(minutes)}`
+                : `${e.route.flight_number} ${formatTime12h(e.departure_time_local)}`;
+              return `<span class="cal-flight-chip ${cls}" data-entry="${escapeHtml(e.id)}" title="${escapeHtml(title)}">${escapeHtml(e.route.flight_number)} ${escapeHtml(formatTime12h(e.departure_time_local))}</span>`;
+            })
+            .join("")}
           ${overflow > 0 ? `<span class="cal-day-more" data-daylist="${weekday}">+${overflow} more</span>` : ""}
         </div>
       </div>`;
@@ -268,15 +328,30 @@ function renderCalendar() {
   calGrid.innerHTML = html;
 
   calGrid.querySelectorAll("[data-entry]").forEach((chip) => {
-    chip.addEventListener("click", () => {
+    chip.addEventListener("click", (e) => {
+      e.stopPropagation();
       const entry = allEntries.find((x) => String(x.id) === chip.dataset.entry);
       if (entry) openEntryDetails(entry);
     });
   });
 
   calGrid.querySelectorAll("[data-daylist]").forEach((moreLink) => {
-    moreLink.addEventListener("click", () => {
+    moreLink.addEventListener("click", (e) => {
+      e.stopPropagation();
       const weekday = Number(moreLink.dataset.daylist);
+      const dayEntries = filtered
+        .filter((e) => (e.days_of_week || []).includes(weekday))
+        .sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
+      openDayListModal(DAY_NAMES[weekday], dayEntries);
+    });
+  });
+
+  // Whole day cell is clickable -- opens the full day list, same as "+N
+  // more" used to. The chip/more-link handlers above stop propagation so
+  // clicking one of those doesn't also trigger this.
+  calGrid.querySelectorAll("[data-daycell]").forEach((cell) => {
+    cell.addEventListener("click", () => {
+      const weekday = Number(cell.dataset.daycell);
       const dayEntries = filtered
         .filter((e) => (e.days_of_week || []).includes(weekday))
         .sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
@@ -290,19 +365,23 @@ function openDayListModal(dayLabel, entries) {
     <h2>${escapeHtml(dayLabel)}'s Flights</h2>
     <div class="rn-modal-section">
       ${entries
-        .map(
-          (e) => `
+        .map((e) => {
+          const minutes = entryCountdownMinutes(e);
+          const gt = [e.terminal ? `T${e.terminal}` : "", e.gate ? `Gate ${e.gate}` : ""].filter(Boolean).join(" / ");
+          return `
         <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line);">
           <div>
             <strong>${escapeHtml(e.route.flight_number)}</strong>
             <span style="color:var(--muted); font-size:13px;"> -- ${escapeHtml(e.route.origin?.icao)} &rarr; ${escapeHtml(e.route.destination?.icao)}</span>
+            ${gt ? `<span style="color:var(--muted); font-size:12px; display:block;">${escapeHtml(gt)}</span>` : ""}
           </div>
           <div style="display:flex; align-items:center; gap:10px;">
+            ${minutes !== null ? `<span class="rn-tag cal-urgency-tag ${urgencyClass(minutes)}">${escapeHtml(formatCountdown(minutes))}</span>` : ""}
             <span style="font-size:13px;">${escapeHtml(formatTime12h(e.departure_time_local))}</span>
             <button type="button" class="btn btn-outline" data-daylist-entry="${escapeHtml(e.id)}">Details</button>
           </div>
-        </div>`
-        )
+        </div>`;
+        })
         .join("")}
     </div>`;
   calDayModalOverlay.classList.add("open");
@@ -369,4 +448,7 @@ function render() {
   if (banner) banner.style.display = usingSampleData ? "block" : "none";
   populateFilterOptions(allEntries);
   render();
+
+  // Keep countdowns/urgency colors live without a full page reload.
+  setInterval(render, 60000);
 })();

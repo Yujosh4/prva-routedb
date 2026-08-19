@@ -1,6 +1,6 @@
 import { supabase } from "./supabase-client.js";
 import { requireStaffSession } from "./auth-guard.js";
-import { CAREER_AIRLINES, ALL_DAYS as DAYS, assignPlausibleTime as sharedAssignTime } from "./career-autofill.js";
+import { CAREER_AIRLINES, ALL_DAYS as DAYS, assignPlausibleSchedule } from "./career-autofill.js";
 
 await requireStaffSession();
 
@@ -163,11 +163,10 @@ autoFillBtn.addEventListener("click", async () => {
   const payload = todo.map((route) => ({
     route_id: route.id,
     airline_id: route.airline_id,
-    departure_time_local: assignPlausibleTime(route),
-    days_of_week: DAYS,
+    ...assignPlausibleSchedule(route.flight_number, route.distance_nm),
     active: true,
     source: "derived",
-    notes: "Auto-assigned plausible time -- not sourced from real-world data.",
+    notes: "Auto-assigned plausible schedule -- not sourced from real-world data.",
   }));
 
   const { data, error } = await supabase.from("career_schedules").insert(payload).select();
