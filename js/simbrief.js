@@ -15,7 +15,7 @@
 //     dispatch form -- generation happens in the popup, then this fetches
 //     the result back via fetchLatestOfp once it closes.
 import { supabase } from "./supabase-client.js";
-import { extractRoutePoints } from "./route-map.js";
+import { extractCharts } from "./route-map.js";
 
 // ICAO type designators are stable, well-established identifiers -- this
 // list only covers aircraft actually seen in PRVA's route data so far.
@@ -143,12 +143,22 @@ export async function generateViaPopup({ origin, destination, aircraftTypes, fli
 // needs a handful of summary fields plus map points, so that's all that
 // gets persisted -- the full object is only held in memory right after
 // generation, never written to storage.
+// Field names below are confirmed against a real OFP response (fetched
+// directly for verification), not guessed -- est_time_enroute in
+// particular is a "HH:MM:SS" string, not a seconds count, which is what
+// caused the block time to show as "NaNh NaNm" before this was checked.
+function parseHms(hms) {
+  const m = String(hms || "").match(/^(\d+):(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
 export function summarizeOfp(ofp) {
   if (!ofp) return null;
   return {
     aircraft: ofp.aircraft?.icaocode || ofp.aircraft?.name || null,
     route: ofp.general?.route || null,
-    block_seconds: ofp.times?.est_time_enroute ?? null,
-    points: extractRoutePoints(ofp),
+    block_minutes: parseHms(ofp.times?.est_time_enroute),
+    charts: extractCharts(ofp),
   };
 }

@@ -1,7 +1,7 @@
 import { supabase } from "./supabase-client.js";
 import { fetchAirportWeather } from "./weather.js";
 import { buildDispatchUrl, generateViaPopup, summarizeOfp } from "./simbrief.js";
-import { renderRouteMap, extractRoutePoints } from "./route-map.js";
+import { renderChartGallery, extractCharts } from "./route-map.js";
 
 const grid = document.getElementById("rnGrid");
 const filterCount = document.getElementById("rnFilterCount");
@@ -276,9 +276,9 @@ function openModal(route) {
 function ofpResultHtml(ofp) {
   const aircraft = ofp?.aircraft?.icaocode || ofp?.aircraft?.name;
   const route = ofp?.general?.route;
-  const block = ofp?.times?.est_time_enroute
-    ? `${Math.floor(ofp.times.est_time_enroute / 3600)}h ${Math.round((ofp.times.est_time_enroute % 3600) / 60)}m`
-    : null;
+  // est_time_enroute is "HH:MM:SS" -- just read the first two segments.
+  const hmsMatch = String(ofp?.times?.est_time_enroute || "").match(/^(\d+):(\d{2}):\d{2}$/);
+  const block = hmsMatch ? `${hmsMatch[1]}h ${hmsMatch[2]}m` : null;
   return `
     <div class="rn-modal-section">
       <h4>Your Flight Plan</h4>
@@ -287,11 +287,7 @@ function ofpResultHtml(ofp) {
         ${route ? `<div><dt>Route</dt><dd>${escapeHtml(route)}</dd></div>` : ""}
         ${block ? `<div><dt>Block Time</dt><dd>${block}</dd></div>` : ""}
       </dl>
-      <div id="rnRouteMap" class="rn-route-map" style="margin-top:12px;"></div>
-      <details style="margin-top:10px;">
-        <summary style="cursor:pointer; color:var(--muted); font-size:12px;">Raw OFP data</summary>
-        <pre style="white-space:pre-wrap; word-break:break-word; font-size:11px; margin-top:6px;">${escapeHtml(JSON.stringify(ofp, null, 2))}</pre>
-      </details>
+      <div id="rnRouteMap" style="margin-top:12px;"></div>
     </div>`;
 }
 
@@ -346,8 +342,7 @@ function openSimbriefStep(route) {
       status.textContent = "Flight plan generated and filed -- also saved to your Active Route page.";
       status.className = "rn-sb-status success";
       document.getElementById("rnOfpResult").innerHTML = ofpResultHtml(ofp);
-      const mapped = renderRouteMap("rnRouteMap", extractRoutePoints(ofp));
-      if (!mapped) document.getElementById("rnRouteMap").outerHTML = "";
+      renderChartGallery("rnRouteMap", extractCharts(ofp));
     } catch (err) {
       console.error("RouteDB: SimBrief popup generation failed", err);
       status.textContent = err.message || "Couldn't generate a flight plan. Try File This Route Manually instead.";

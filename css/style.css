@@ -262,12 +262,6 @@ button{ font-family: inherit; }
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
-.rn-route-map{
-  height: 220px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--line);
-  background: var(--bg-soft);
-}
 .rn-wx-card{
   border: 1px solid var(--line);
   border-radius: var(--radius-md);

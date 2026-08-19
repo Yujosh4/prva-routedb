@@ -1,5 +1,5 @@
 import { fetchLatestOfp, summarizeOfp } from "./simbrief.js";
-import { renderRouteMap } from "./route-map.js";
+import { renderChartGallery } from "./route-map.js";
 
 const STORAGE_KEY = "prva-routedb-active-routes";
 const grid = document.getElementById("rnActiveGrid");
@@ -40,9 +40,7 @@ function saveEntries(entries) {
 
 function ofpSummaryHtml(ofp, index) {
   if (!ofp) return "";
-  const block = ofp.block_seconds
-    ? `${Math.floor(ofp.block_seconds / 3600)}h ${Math.round((ofp.block_seconds % 3600) / 60)}m`
-    : null;
+  const block = ofp.block_minutes != null ? `${Math.floor(ofp.block_minutes / 60)}h ${ofp.block_minutes % 60}m` : null;
   const hasKnownFields = ofp.aircraft || ofp.route || block;
   return `
     <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--line); font-size:12px;">
@@ -50,7 +48,7 @@ function ofpSummaryHtml(ofp, index) {
       ${ofp.route ? `<div><strong>Route:</strong> ${escapeHtml(ofp.route)}</div>` : ""}
       ${block ? `<div><strong>Block time:</strong> ${block}</div>` : ""}
       ${!hasKnownFields ? `<div>Flight plan found, but no summary fields recognized.</div>` : ""}
-      <div id="rnActiveMap-${index}" class="rn-route-map" style="margin-top:10px; display:none;"></div>
+      <div id="rnActiveMap-${index}" style="margin-top:10px;"></div>
     </div>`;
 }
 
@@ -89,11 +87,8 @@ function render() {
   }
   grid.innerHTML = entries.map(cardHtml).join("");
   entries.forEach((entry, index) => {
-    if (!entry.ofp?.points) return;
-    const mapEl = document.getElementById(`rnActiveMap-${index}`);
-    if (mapEl) mapEl.style.display = "block";
-    const mapped = renderRouteMap(`rnActiveMap-${index}`, entry.ofp.points);
-    if (!mapped && mapEl) mapEl.style.display = "none";
+    if (!entry.ofp?.charts) return;
+    renderChartGallery(`rnActiveMap-${index}`, entry.ofp.charts);
   });
 }
 

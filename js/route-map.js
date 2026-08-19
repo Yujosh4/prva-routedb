@@ -1,40 +1,41 @@
-// Renders a route map from a list of [lat, lon] points using Leaflet +
-// OpenStreetMap tiles (free, no key).
-
-// SimBrief's navlog field names are well-established in the flight-sim
-// community but not verified here against a real response -- checks a few
-// plausible field name variants and returns null (caller skips the map)
-// rather than throwing if the shape doesn't match.
-export function extractRoutePoints(ofp) {
-  let fixes = ofp?.navlog?.fix;
-  if (!fixes) return null;
-  if (!Array.isArray(fixes)) fixes = [fixes];
-
-  const points = fixes
-    .map((f) => {
-      const lat = parseFloat(f.pos_lat ?? f.lat);
-      const lon = parseFloat(f.pos_long ?? f.pos_lon ?? f.lon);
-      return isFinite(lat) && isFinite(lon) ? [lat, lon] : null;
-    })
-    .filter(Boolean);
-
-  return points.length >= 2 ? points : null;
+// SimBrief generates its own chart images per OFP -- route map, significant
+// weather, winds aloft at cruise altitudes, vertical profile -- confirmed
+// directly against a real OFP response (images.directory + images.map[],
+// each {name, link}, combined as `${directory}${link}`, publicly
+// accessible with no auth). Far better than plotting our own from raw
+// waypoints, so this renders SimBrief's actual charts instead.
+export function extractCharts(ofp) {
+  const directory = ofp?.images?.directory;
+  const maps = ofp?.images?.map;
+  if (!directory || !Array.isArray(maps) || !maps.length) return null;
+  return maps.map((m) => ({ name: m.name, url: directory + m.link }));
 }
 
-export function renderRouteMap(containerId, points) {
+export function renderChartGallery(containerId, charts) {
   const container = document.getElementById(containerId);
-  if (!container || typeof L === "undefined" || !points || points.length < 2) return false;
+  if (!container || !charts || !charts.length) return false;
 
-  container.innerHTML = "";
-  const map = L.map(containerId, { zoomControl: true, attributionControl: true });
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "&copy; OpenStreetMap contributors",
-    maxZoom: 8,
-  }).addTo(map);
+  const escapeHtml = (str) =>
+    String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  const line = L.polyline(points, { color: "#c8102e", weight: 2.5 }).addTo(map);
-  L.circleMarker(points[0], { radius: 5, color: "#0a0f1e", fillOpacity: 1 }).addTo(map);
-  L.circleMarker(points[points.length - 1], { radius: 5, color: "#0a0f1e", fillOpacity: 1 }).addTo(map);
-  map.fitBounds(line.getBounds(), { padding: [20, 20] });
+  const mainId = `${containerId}-main`;
+  container.innerHTML = `
+    <img id="${mainId}" src="${escapeHtml(charts[0].url)}" alt="${escapeHtml(charts[0].name)}" style="width:100%; border-radius:var(--radius-md); border:1px solid var(--line); display:block;">
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+      ${charts
+        .map(
+          (c, i) => `<button type="button" class="btn btn-outline" style="flex:0 0 auto; padding:6px 12px; font-size:11px;" data-chart="${i}">${escapeHtml(c.name)}</button>`
+        )
+        .join("")}
+    </div>`;
+
+  container.querySelectorAll("[data-chart]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const chart = charts[Number(btn.dataset.chart)];
+      document.getElementById(mainId).src = chart.url;
+      document.getElementById(mainId).alt = chart.name;
+    });
+  });
+
   return true;
 }
