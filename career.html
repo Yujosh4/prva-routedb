@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Career Mode | Philippine Airlines Virtual</title>
+<meta name="description" content="Real-world-style scheduled flying for Philippine Airlines and PAL Express -- actual departure times, pick a flight, file it via SimBrief.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="rn-header">
+  <div class="section-inner">
+    <a href="index.html" class="rn-brand">
+      <strong>PRVA</strong>
+      <span>Career Mode</span>
+    </a>
+    <nav>
+      <a href="index.html">Browse Routes</a>
+      <a href="active.html">Active Route</a>
+      <a href="https://ifphilippineairlinesvirtual.netlify.app">Main Site</a>
+    </nav>
+  </div>
+</header>
+
+<section class="rn-intro">
+  <div class="section-inner">
+    <h1>Fly the real schedule.</h1>
+    <p>Career Mode is exclusive to Philippine Airlines and PAL Express -- real-world scheduled departure times, not just any route whenever you want. Pick your flight, check the weather, and file it via SimBrief the same way as always.</p>
+    <p id="rnSampleBanner" style="display:none; margin-top:14px; color:#e0334c; font-size:13px;">
+      Showing sample flights -- connect this site's Supabase project to go live.
+    </p>
+    <p style="margin-top:14px; font-size:13px; color:var(--muted-light);">
+      This is a browsable schedule for now -- claiming a specific flight and tracking your progress will live in Crew Center once it's built.
+    </p>
+  </div>
+</section>
+
+<section class="rn-filters">
+  <div class="section-inner">
+    <input type="text" id="rnSearch" placeholder="Search flight number, city, or ICAO...">
+    <select id="rnOriginFilter"><option value="">Any origin</option></select>
+    <select id="rnDestinationFilter"><option value="">Any destination</option></select>
+    <select id="rnAirlineFilter"><option value="">Any airline</option></select>
+    <select id="rnDayFilter"><option value="">Any day</option></select>
+    <span class="rn-filter-count" id="rnFilterCount"></span>
+  </div>
+</section>
+
+<section class="rn-grid-wrap">
+  <div class="section-inner">
+    <div class="rn-grid" id="rnGrid">
+      <div class="rn-empty">Loading schedule…</div>
+    </div>
+  </div>
+</section>
+
+<div class="rn-modal-overlay" id="rnModalOverlay">
+  <div class="rn-modal">
+    <button type="button" class="rn-modal-close" id="rnModalClose" aria-label="Close">&times;</button>
+    <div id="rnModalBody"></div>
+  </div>
+</div>
+
+<footer class="rn-footer">
+  <div class="section-inner">
+    <span>&copy; 2026 Philippine Airlines Virtual.</span>
+    <span>Not affiliated with the real-world Philippine Airlines.</span>
+  </div>
+</footer>
+
+<script type="module" src="js/career.js"></script>
+</body>
+</html>
