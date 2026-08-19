@@ -250,10 +250,14 @@ export function initRouteModal() {
 
       ${runwayNotesHtml(o, d)}
 
-      <div class="rn-modal-actions">
-        <button type="button" class="btn btn-primary" data-fly="${escapeHtml(route.id)}">Fly This Route</button>
-      </div>
-      <div id="rnSbStep"></div>
+      ${
+        route.unavailableReason
+          ? `<div class="rn-modal-section"><p class="rn-sb-status" style="margin-top:0;">${escapeHtml(route.unavailableReason)}</p></div>`
+          : `<div class="rn-modal-actions">
+               <button type="button" class="btn btn-primary" data-fly="${escapeHtml(route.id)}">Fly This Route</button>
+             </div>
+             <div id="rnSbStep"></div>`
+      }
     `;
     modalOverlay.classList.add("open");
 

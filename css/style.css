@@ -244,6 +244,24 @@ button{ font-family: inherit; }
   font-variant-numeric: tabular-nums;
 }
 
+.rn-status-filters{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-top: 12px;
+}
+.rn-check{
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.rn-check input{ accent-color: var(--red-600); width: 15px; height: 15px; cursor: pointer; }
+.rn-check:hover{ color: var(--ink); }
+
 /* ---------- Route grid ---------- */
 .rn-grid-wrap{ padding: 44px 0 96px; }
 .rn-grid{
@@ -251,6 +269,20 @@ button{ font-family: inherit; }
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 22px;
 }
+/* Marks the boundary between "still flyable today", "already departed
+   today", and everything not-today in list view -- without it those
+   groups just ran together in one flat list, sorted correctly but with
+   no visual cue for where "still available" stops. Spans every column. */
+.rn-list-section{
+  grid-column: 1 / -1;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  padding: 4px 2px;
+}
+.rn-list-section:not(:first-child){ margin-top: 6px; }
 .rn-empty, .rn-error{
   padding: 64px 20px;
   text-align: center;

@@ -20,6 +20,9 @@ const daySelect = document.getElementById("rnDayFilter");
 const quickFilterSelect = document.getElementById("rnQuickFilter");
 const sortBySelect = document.getElementById("rnSortBy");
 const clearFiltersBtn = document.getElementById("rnClearFilters");
+const hideDepartedCheckbox = document.getElementById("rnHideDeparted");
+const hideDelayedCheckbox = document.getElementById("rnHideDelayed");
+const hideCancelledCheckbox = document.getElementById("rnHideCancelled");
 const { openModal } = initRouteModal();
 
 // Origin/destination filters are typable (datalist) for easier mobile use,
@@ -325,6 +328,31 @@ function getFilteredEntries(yearMonth) {
   return result;
 }
 
+// Shared by list view and every calendar entry point (chip, day-list
+// modal, whole-cell click) so "departed"/"delayed"/"cancelled" mean the
+// same thing everywhere rather than three slightly different rules.
+function passesStatusHideFilters(disruptionStatus, departed) {
+  if (hideDepartedCheckbox.checked && departed) return false;
+  if (hideDelayedCheckbox.checked && disruptionStatus === "delayed") return false;
+  if (hideCancelledCheckbox.checked && disruptionStatus === "cancelled") return false;
+  return true;
+}
+
+// Entries scheduled for a given weekday/date, filtered by the hide-status
+// checkboxes and sorted by time. Used for the calendar grid AND the
+// day-list modal so both agree on what's actually shown for a given day.
+function visibleDayEntries(source, weekday, dateKey, todayCell, isPastDay) {
+  return source
+    .filter((e) => (e.days_of_week || []).includes(weekday))
+    .filter((e) => {
+      const minutes = todayCell ? entryCountdownMinutes(e) : null;
+      const disruption = todayCell ? entryDisruptionToday(e) : entryDisruptionForDate(e, dateKey);
+      const departed = isPastDay || (minutes !== null && minutes <= 0);
+      return passesStatusHideFilters(disruption.status, departed);
+    })
+    .sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
+}
+
 function openEntryDetails(entry) {
   // The shared modal (route-modal.js) works on plain route objects -- flatten
   // this schedule entry into that shape, adding a careerInfo block for the
@@ -332,6 +360,12 @@ function openEntryDetails(entry) {
   const minutes = entryCountdownMinutes(entry);
   const disruption = entryDisruptionToday(entry);
   const disruptionLbl = disruptionLabel(disruption);
+  // A cancelled or already-departed flight isn't something a pilot can
+  // actually go file today -- still fully viewable, just no "Fly This
+  // Route" button pretending otherwise.
+  let unavailableReason = null;
+  if (disruption.status === "cancelled") unavailableReason = "This flight is cancelled today -- check back another day.";
+  else if (minutes !== null && minutes <= 0) unavailableReason = "This flight has already departed for today.";
   const careerInfo = `
     <div><dt>Scheduled Departure</dt><dd>${escapeHtml(formatTime12h(entry.departure_time_local))} local</dd></div>
     <div><dt>Operates</dt><dd>${escapeHtml(formatDays(entry.days_of_week))}</dd></div>
@@ -341,7 +375,7 @@ function openEntryDetails(entry) {
     ${minutes !== null ? `<div><dt>Countdown</dt><dd class="${urgencyClass(minutes)}">${escapeHtml(formatCountdown(minutes))} (incl. 5min buffer)</dd></div>` : ""}
     ${entry.min_rank ? `<div><dt>Minimum Rank</dt><dd>${escapeHtml(entry.min_rank.name)}</dd></div>` : ""}
   `;
-  openModal({ ...entry.route, airline: entry.airline, careerInfo });
+  openModal({ ...entry.route, airline: entry.airline, careerInfo, unavailableReason });
 }
 
 // ---------- List view ----------
@@ -351,13 +385,47 @@ function renderList() {
     grid.innerHTML = `<div class="rn-error">Couldn't load the schedule right now. Try refreshing in a moment.</div>`;
     return;
   }
-  if (!filtered.length) {
+
+  const visible = filtered.filter((e) => {
+    const minutes = entryCountdownMinutes(e);
+    const disruption = entryDisruptionToday(e);
+    const departed = minutes !== null && minutes <= 0;
+    return passesStatusHideFilters(disruption.status, departed);
+  });
+
+  if (!visible.length) {
     grid.innerHTML = `<div class="rn-empty">No scheduled flights match those filters.</div>`;
     filterCount.textContent = "0 flights";
     return;
   }
-  grid.innerHTML = filtered.map(entryCardHtml).join("");
-  filterCount.textContent = `${filtered.length} flight${filtered.length === 1 ? "" : "s"}`;
+
+  // Grouped into labeled sections only in the default "soonest" sort --
+  // it's specifically what made "which of these can I still fly today"
+  // confusing (everything sorted correctly, but upcoming and long-departed
+  // flights ran together with no visual break). Other sort modes (flight
+  // number, time of day) have their own intentional ordering that
+  // grouping would just fight, so they stay a plain flat list.
+  if (sortBySelect.value === "soonest") {
+    const upcoming = [], departedToday = [], otherDays = [];
+    visible.forEach((e) => {
+      const minutes = entryCountdownMinutes(e);
+      if (minutes === null) otherDays.push(e);
+      else if (minutes <= 0) departedToday.push(e);
+      else upcoming.push(e);
+    });
+    const groups = [
+      { label: "Upcoming Today", entries: upcoming },
+      { label: "Already Departed Today", entries: departedToday },
+      { label: "Other Days", entries: otherDays },
+    ].filter((g) => g.entries.length);
+    const showHeaders = groups.length > 1;
+    grid.innerHTML = groups
+      .map((g) => (showHeaders ? `<div class="rn-list-section">${escapeHtml(g.label)}</div>` : "") + g.entries.map(entryCardHtml).join(""))
+      .join("");
+  } else {
+    grid.innerHTML = visible.map(entryCardHtml).join("");
+  }
+  filterCount.textContent = `${visible.length} flight${visible.length === 1 ? "" : "s"}`;
 }
 
 grid.addEventListener("click", (e) => {
@@ -398,10 +466,10 @@ function renderCalendar() {
 
   for (let day = 1; day <= daysInMonth; day++) {
     const weekday = isoWeekday(new Date(year, month, day));
-    const dayEntries = filtered
-      .filter((e) => (e.days_of_week || []).includes(weekday))
-      .sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
     const todayCell = isToday(day);
+    const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const isPastDay = !todayCell && isPastDateKey(dateKey);
+    const dayEntries = visibleDayEntries(filtered, weekday, dateKey, todayCell, isPastDay);
 
     // On today's cell specifically, the 3 visible slots should be whichever
     // flights are actually still relevant -- not just whichever happen to
@@ -416,7 +484,6 @@ function renderCalendar() {
     // preview per calendar date instead -- deterministic, so the same day
     // always shows the same preview on reload, but different days feature
     // different flights from that day's roster.
-    const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const displayOrder = todayCell
       ? [...dayEntries].sort((a, b) => {
           const ma = entryCountdownMinutes(a);
@@ -445,15 +512,14 @@ function renderCalendar() {
               // accent (not a full background fill) and no inline countdown
               // text, so a busy day doesn't read as a wall of red -- the
               // full countdown is one click away.
-              const isPast = !todayCell && isPastDateKey(dateKey);
               const minutes = todayCell ? entryCountdownMinutes(e) : null;
               const disruption = todayCell ? entryDisruptionToday(e) : entryDisruptionForDate(e, dateKey);
-              const urgencyCls = isPast ? "cal-urgency-departed" : minutes !== null ? urgencyClass(minutes) : "";
+              const urgencyCls = isPastDay ? "cal-urgency-departed" : minutes !== null ? urgencyClass(minutes) : "";
               const cls = [urgencyCls, disruptionClass(disruption.status)].filter(Boolean).join(" ");
               const disruptionLbl = disruptionLabel(disruption);
               const titleParts = [`${e.route.flight_number} ${formatTime12h(e.departure_time_local)}`];
               if (disruptionLbl) titleParts.push(disruptionLbl);
-              else if (isPast) titleParts.push("Departed");
+              else if (isPastDay) titleParts.push("Departed");
               else if (minutes !== null) titleParts.push(formatCountdown(minutes));
               const title = titleParts.join(" -- ");
               return `<span class="cal-flight-chip ${cls}" data-entry="${escapeHtml(e.id)}" title="${escapeHtml(title)}">${escapeHtml(e.route.flight_number)} ${escapeHtml(formatTime12h(e.departure_time_local))}</span>`;
@@ -479,9 +545,9 @@ function renderCalendar() {
       e.stopPropagation();
       const weekday = Number(moreLink.dataset.daylist);
       const dateKey = moreLink.dataset.date;
-      const dayEntries = filtered
-        .filter((e) => (e.days_of_week || []).includes(weekday))
-        .sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
+      const todayCell = isViewerToday(dateKey);
+      const isPastDay = !todayCell && isPastDateKey(dateKey);
+      const dayEntries = visibleDayEntries(filtered, weekday, dateKey, todayCell, isPastDay);
       openDayListModal(DAY_NAMES[weekday], dayEntries, dateKey);
     });
   });
@@ -493,9 +559,9 @@ function renderCalendar() {
     cell.addEventListener("click", () => {
       const weekday = Number(cell.dataset.daycell);
       const dateKey = cell.dataset.date;
-      const dayEntries = filtered
-        .filter((e) => (e.days_of_week || []).includes(weekday))
-        .sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
+      const todayCell = isViewerToday(dateKey);
+      const isPastDay = !todayCell && isPastDateKey(dateKey);
+      const dayEntries = visibleDayEntries(filtered, weekday, dateKey, todayCell, isPastDay);
       openDayListModal(DAY_NAMES[weekday], dayEntries, dateKey);
     });
   });
@@ -600,9 +666,10 @@ function render() {
   else renderList();
 }
 
-[searchInput, originSelect, destinationSelect, airlineSelect, daySelect, quickFilterSelect, sortBySelect].forEach((el) =>
-  el.addEventListener("input", render)
-);
+[
+  searchInput, originSelect, destinationSelect, airlineSelect, daySelect, quickFilterSelect, sortBySelect,
+  hideDepartedCheckbox, hideDelayedCheckbox, hideCancelledCheckbox,
+].forEach((el) => el.addEventListener("input", render));
 
 clearFiltersBtn.addEventListener("click", () => {
   searchInput.value = "";
@@ -612,6 +679,9 @@ clearFiltersBtn.addEventListener("click", () => {
   daySelect.value = "";
   quickFilterSelect.value = "";
   sortBySelect.value = "soonest";
+  hideDepartedCheckbox.checked = false;
+  hideDelayedCheckbox.checked = false;
+  hideCancelledCheckbox.checked = false;
   render();
 });
 
