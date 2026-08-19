@@ -3,6 +3,9 @@ import { initRouteModal } from "./route-modal.js";
 import { minutesToEffectiveDeparture, urgencyClass, formatCountdown, airportLocalDateKey } from "./career-time.js";
 import { hashString } from "./career-autofill.js";
 import { simulatedDisruption, disruptionClass, disruptionLabel } from "./career-disruptions.js";
+import { initThemeToggle } from "./theme.js";
+
+initThemeToggle();
 
 const grid = document.getElementById("rnGrid");
 const filterCount = document.getElementById("rnFilterCount");

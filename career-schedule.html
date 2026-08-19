@@ -4,13 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Manage Career Schedule | PRVA Route Network</title>
+<script>(function(){try{var t=localStorage.getItem("prva-routedb-theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <style>
   .cs-wrap{ max-width: 1100px; margin: 0 auto; padding: 40px 28px 90px; }
-  .cs-section{ background: var(--white); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 20px; }
+  .cs-section{ background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 20px; }
   .cs-summary{ display: flex; gap: 24px; flex-wrap: wrap; align-items: center; }
   .cs-summary strong{ font-size: 20px; }
   .cs-table-wrap{ overflow-x: auto; }
@@ -31,11 +32,12 @@
 
 <header class="rn-header">
   <div class="section-inner">
-    <a href="index.html" class="rn-brand"><strong>PRVA</strong><span>Career Schedule -- Staff</span></a>
+    <a href="index.html" class="rn-brand"><img src="assets/img/logo-white.png" alt="PRVA"><span>Career Schedule -- Staff</span></a>
     <nav>
       <a href="career.html">Career Mode</a>
       <a href="import.html">Import Routes</a>
       <a href="#" id="logoutLink">Log Out</a>
+      <button type="button" class="rn-theme-toggle" id="themeToggle">🌙 Dark</button>
     </nav>
   </div>
 </header>

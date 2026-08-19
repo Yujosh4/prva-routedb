@@ -1,5 +1,8 @@
 import { supabase } from "./supabase-client.js";
 import { initRouteModal } from "./route-modal.js";
+import { initThemeToggle } from "./theme.js";
+
+initThemeToggle();
 
 const grid = document.getElementById("rnGrid");
 const filterCount = document.getElementById("rnFilterCount");

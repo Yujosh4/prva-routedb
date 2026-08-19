@@ -17,6 +17,11 @@
 
   --bg: #ffffff;
   --bg-soft: #f6f7f9;
+  /* Card/modal/input backgrounds -- kept separate from --white because
+     --white is also used as a foreground text color on the (always-navy)
+     header/footer/buttons, which must stay white in both themes. --surface
+     is what actually swaps to a dark tone in dark mode. */
+  --surface: #ffffff;
 
   --shadow-soft: 0 30px 60px -25px rgba(5, 7, 15, 0.25);
   --shadow-card: 0 16px 40px -20px rgba(5, 7, 15, 0.18);
@@ -24,7 +29,42 @@
   --radius-md: 4px;
   --radius-btn: 2px;
   --container: 1220px;
+  color-scheme: light;
 }
+
+/* Dark mode -- follows the system preference by default; an explicit
+   data-theme attribute (set by js/theme.js via the header toggle) always
+   wins over the system setting, in either direction. color-scheme tells
+   the browser to render NATIVE controls (checkboxes, date/time pickers,
+   scrollbars) in the matching palette too, so every plain <input>/<select>
+   across the staff pages doesn't need its background hand-styled. */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ink: #e7e9f0;
+    --muted: #9aa1b1;
+    --muted-light: #6b7280;
+    --line: rgba(255,255,255,0.14);
+    --bg: #05070f;
+    --bg-soft: #0d1220;
+    --surface: #121a30;
+    --shadow-soft: 0 30px 60px -25px rgba(0,0,0,0.6);
+    --shadow-card: 0 16px 40px -20px rgba(0,0,0,0.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ink: #e7e9f0;
+  --muted: #9aa1b1;
+  --muted-light: #6b7280;
+  --line: rgba(255,255,255,0.14);
+  --bg: #05070f;
+  --bg-soft: #0d1220;
+  --surface: #121a30;
+  --shadow-soft: 0 30px 60px -25px rgba(0,0,0,0.6);
+  --shadow-card: 0 16px 40px -20px rgba(0,0,0,0.5);
+  color-scheme: dark;
+}
+:root[data-theme="light"]{ color-scheme: light; }
 
 *{ box-sizing: border-box; }
 html{ scroll-behavior: smooth; }
@@ -65,7 +105,9 @@ button{ font-family: inherit; }
   gap: 10px;
 }
 .rn-brand strong{ font-family: 'Playfair Display', serif; font-size: 20px; }
+.rn-brand img{ height: 32px; width: auto; display: block; }
 .rn-brand span{ color: var(--muted-light); font-size: 13px; }
+.rn-header nav{ display: flex; align-items: center; }
 .rn-header nav a{
   color: var(--muted-light);
   font-size: 14px;
@@ -73,6 +115,17 @@ button{ font-family: inherit; }
   margin-left: 24px;
 }
 .rn-header nav a:hover{ color: var(--white); }
+.rn-theme-toggle{
+  margin-left: 24px;
+  background: transparent;
+  border: 1px solid var(--line-dark);
+  border-radius: 99px;
+  color: var(--muted-light);
+  font-size: 13px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.rn-theme-toggle:hover{ color: var(--white); border-color: var(--white); }
 
 /* ---------- Page intro ---------- */
 .rn-intro{
@@ -104,7 +157,7 @@ button{ font-family: inherit; }
   padding: 10px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: var(--white);
+  background: var(--surface);
   color: var(--ink);
 }
 .rn-filters input{ flex: 1 1 220px; min-width: 180px; }
@@ -135,7 +188,7 @@ button{ font-family: inherit; }
 .rn-card{
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  background: var(--white);
+  background: var(--surface);
   padding: 22px;
   display: flex;
   flex-direction: column;
@@ -220,7 +273,7 @@ button{ font-family: inherit; }
 }
 .rn-modal-overlay.open{ display: flex; }
 .rn-modal{
-  background: var(--white);
+  background: var(--surface);
   border-radius: var(--radius-lg);
   max-width: 560px;
   width: 100%;
@@ -236,7 +289,7 @@ button{ font-family: inherit; }
   width: 32px; height: 32px;
   border-radius: 50%;
   border: 1px solid var(--line);
-  background: var(--white);
+  background: var(--surface);
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   font-size: 16px;
@@ -350,7 +403,7 @@ button{ font-family: inherit; }
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   padding: 6px;
-  background: var(--white);
+  background: var(--surface);
   display: flex;
   flex-direction: column;
   gap: 4px;

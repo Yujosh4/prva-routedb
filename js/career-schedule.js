@@ -1,7 +1,9 @@
 import { supabase } from "./supabase-client.js";
 import { requireStaffSession } from "./auth-guard.js";
 import { CAREER_AIRLINES, ALL_DAYS as DAYS, assignPlausibleSchedule, assignPlausibleTerminal, hashString } from "./career-autofill.js";
+import { initThemeToggle } from "./theme.js";
 
+initThemeToggle();
 await requireStaffSession();
 
 const DAY_LABELS = { 1: "M", 2: "T", 3: "W", 4: "T", 5: "F", 6: "S", 7: "S" };

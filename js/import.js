@@ -1,7 +1,9 @@
 import { supabase } from "./supabase-client.js";
 import { requireStaffSession } from "./auth-guard.js";
 import { autoScheduleNewRoutes } from "./career-autofill.js";
+import { initThemeToggle } from "./theme.js";
 
+initThemeToggle();
 await requireStaffSession();
 
 const airlineSelect = document.getElementById("airlineSelect");

@@ -1,6 +1,9 @@
 import { fetchLatestOfp, summarizeOfp } from "./simbrief.js";
 import { renderChartGallery, extractCharts } from "./route-map.js";
 import { ofpDetailHtml } from "./ofp-detail.js";
+import { initThemeToggle } from "./theme.js";
+
+initThemeToggle();
 
 const STORAGE_KEY = "prva-routedb-active-routes";
 const grid = document.getElementById("rnActiveGrid");
