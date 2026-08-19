@@ -1,5 +1,6 @@
 import { fetchLatestOfp, summarizeOfp } from "./simbrief.js";
-import { renderChartGallery } from "./route-map.js";
+import { renderChartGallery, extractCharts } from "./route-map.js";
+import { ofpDetailHtml } from "./ofp-detail.js";
 
 const STORAGE_KEY = "prva-routedb-active-routes";
 const grid = document.getElementById("rnActiveGrid");
@@ -76,6 +77,7 @@ function cardHtml(entry, index) {
       </div>
       <div id="rnOfpStatus-${index}" class="rn-sb-status"></div>
       ${ofpSummaryHtml(entry.ofp, index)}
+      <div id="rnOfpFull-${index}"></div>
     </article>`;
 }
 
@@ -112,11 +114,22 @@ grid.addEventListener("click", async (e) => {
     status.textContent = "Checking SimBrief…";
     status.className = "rn-sb-status";
     try {
+      // Fetches the full OFP (large -- full navlog, weather, weights,
+      // everything). Only the small summarized shape gets persisted (see
+      // summarizeOfp / saveEntries), but the full object is still in memory
+      // here, so the rich detail view uses it directly rather than
+      // re-fetching or falling back to the trimmed stored version.
       const ofp = await fetchLatestOfp(entry.simbrief_id);
       entry.ofp = summarizeOfp(ofp);
       entry.ofp_checked_at = new Date().toISOString();
       saveEntries(entries);
       render();
+      const fullEl = document.getElementById(`rnOfpFull-${idx}`);
+      if (fullEl) {
+        const mapId = `rnFullMap-${idx}`;
+        fullEl.innerHTML = ofpDetailHtml(ofp, mapId);
+        renderChartGallery(mapId, extractCharts(ofp));
+      }
     } catch (err) {
       status.textContent = "Couldn't fetch SimBrief status: " + err.message;
       status.className = "rn-sb-status error";

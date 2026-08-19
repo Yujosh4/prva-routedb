@@ -2,6 +2,7 @@ import { supabase } from "./supabase-client.js";
 import { fetchAirportWeather } from "./weather.js";
 import { buildDispatchUrl, generateViaPopup, summarizeOfp, aircraftOptionsFor } from "./simbrief.js";
 import { renderChartGallery, extractCharts } from "./route-map.js";
+import { ofpDetailHtml } from "./ofp-detail.js";
 
 const grid = document.getElementById("rnGrid");
 const filterCount = document.getElementById("rnFilterCount");
@@ -273,105 +274,6 @@ function openModal(route) {
   modalBody.querySelector("[data-fly]")?.addEventListener("click", () => openSimbriefStep(route));
 }
 
-function hms(str) {
-  const m = String(str || "").match(/^(\d+):(\d{2}):\d{2}$/);
-  return m ? `${m[1]}h ${m[2]}m` : null;
-}
-
-function fmtNum(n) {
-  const num = Number(n);
-  return isFinite(num) ? num.toLocaleString() : null;
-}
-
-function detailRow(label, value) {
-  return value != null && value !== "" ? `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>` : "";
-}
-
-// All field names below (crew, weights, fuel, atc, params.units, etc.) are
-// confirmed against a real generated OFP, not guessed.
-// tlr.takeoff/landing each list every candidate runway at the airport, with
-// v-speeds only populated for the ones actually viable in current wind --
-// the one matching conditions.planned_runway is the one SimBrief actually
-// used, confirmed against a real response (V1/VR/V2 present there, blank
-// on non-viable runways).
-function plannedRunway(phase) {
-  const planned = phase?.conditions?.planned_runway;
-  const runways = phase?.runway || [];
-  return runways.find((r) => r.identifier === planned) || null;
-}
-
-function ofpResultHtml(ofp) {
-  const aircraft = ofp?.aircraft?.icaocode || ofp?.aircraft?.name;
-  const reg = ofp?.aircraft?.reg;
-  const units = ofp?.params?.units === "lbs" ? "lb" : "kg";
-  const w = ofp?.weights || {};
-  const f = ofp?.fuel || {};
-  const toRwy = plannedRunway(ofp?.tlr?.takeoff);
-  const ldRwy = plannedRunway(ofp?.tlr?.landing);
-
-  return `
-    <div class="rn-modal-section">
-      <h4>Flight Info</h4>
-      <dl class="rn-detail-grid">
-        ${detailRow("Callsign", ofp?.atc?.callsign)}
-        ${detailRow("Aircraft", [aircraft, reg].filter(Boolean).join(" / "))}
-        ${detailRow("Departure Rwy", ofp?.origin?.plan_rwy)}
-        ${detailRow("Arrival Rwy", ofp?.destination?.plan_rwy)}
-        ${detailRow("Cruise Altitude", ofp?.general?.initial_altitude ? `FL${Math.round(ofp.general.initial_altitude / 100)}` : null)}
-        ${detailRow("Cruise Mach", ofp?.general?.cruise_mach)}
-        ${detailRow("Distance", ofp?.general?.gc_distance ? `${fmtNum(ofp.general.gc_distance)} nm` : null)}
-        ${detailRow("Passengers", ofp?.general?.passengers)}
-      </dl>
-    </div>
-
-    <div class="rn-modal-section">
-      <h4>Flight Plan Summary <span class="rn-recommended-badge">Recommended</span></h4>
-      <p style="font-size:11px; color:var(--muted); margin-top:-6px; margin-bottom:10px;">No specific routing was forced -- SimBrief computed this route itself based on current winds aloft.</p>
-      <dl class="rn-detail-grid">
-        ${detailRow("Route", ofp?.general?.route)}
-        ${detailRow("Block Time", hms(ofp?.times?.est_time_enroute))}
-        ${detailRow("Ramp Fuel", f.plan_ramp ? `${fmtNum(f.plan_ramp)} ${units}` : null)}
-        ${detailRow("Takeoff Fuel", f.plan_takeoff ? `${fmtNum(f.plan_takeoff)} ${units}` : null)}
-        ${detailRow("Trip Fuel (burn)", f.enroute_burn ? `${fmtNum(f.enroute_burn)} ${units}` : null)}
-      </dl>
-    </div>
-
-    <div class="rn-modal-section">
-      <h4>Load Sheet</h4>
-      <dl class="rn-detail-grid">
-        ${detailRow("Zero Fuel Weight", w.est_zfw ? `${fmtNum(w.est_zfw)} / ${fmtNum(w.max_zfw)} ${units}` : null)}
-        ${detailRow("Takeoff Weight", w.est_tow ? `${fmtNum(w.est_tow)} / ${fmtNum(w.max_tow)} ${units}` : null)}
-        ${detailRow("Landing Weight", w.est_ldw ? `${fmtNum(w.est_ldw)} / ${fmtNum(w.max_ldw)} ${units}` : null)}
-        ${detailRow("Payload", w.payload ? `${fmtNum(w.payload)} ${units}` : null)}
-        ${detailRow("Cargo", w.cargo ? `${fmtNum(w.cargo)} ${units}` : null)}
-        ${detailRow("Ramp Weight", w.est_ramp ? `${fmtNum(w.est_ramp)} ${units}` : null)}
-      </dl>
-      <p style="margin-top:10px; font-size:11px; color:var(--muted);">Est / Max shown where applicable.</p>
-    </div>
-
-    ${
-      toRwy?.speeds_v1 || ldRwy
-        ? `<div class="rn-modal-section">
-            <h4>V-Speeds</h4>
-            <dl class="rn-detail-grid">
-              ${detailRow("Takeoff Runway", toRwy?.identifier)}
-              ${detailRow("V1", toRwy?.speeds_v1 ? `${toRwy.speeds_v1} kts` : null)}
-              ${detailRow("VR", toRwy?.speeds_vr ? `${toRwy.speeds_vr} kts` : null)}
-              ${detailRow("V2", toRwy?.speeds_v2 ? `${toRwy.speeds_v2} kts` : null)}
-              ${detailRow(toRwy?.speeds_other_id, toRwy?.speeds_other ? `${toRwy.speeds_other} kts` : null)}
-              ${detailRow("Landing Runway", ldRwy?.identifier)}
-              ${detailRow("Vref", ldRwy?.speeds_vref ? `${ldRwy.speeds_vref} kts` : null)}
-            </dl>
-            <p style="margin-top:10px; font-size:11px; color:var(--muted);">From SimBrief's takeoff/landing performance report for the planned runway.</p>
-          </div>`
-        : ""
-    }
-
-    <div class="rn-modal-section">
-      <h4>Charts</h4>
-      <div id="rnRouteMap"></div>
-    </div>`;
-}
 
 function openSimbriefStep(route) {
   const options = aircraftOptionsFor(route.aircraft_types);
@@ -443,7 +345,7 @@ function openSimbriefStep(route) {
       saveActiveRoute(sbId, route, summarizeOfp(ofp));
       status.textContent = "Flight plan generated and filed -- also saved to your Active Route page.";
       status.className = "rn-sb-status success";
-      document.getElementById("rnOfpResult").innerHTML = ofpResultHtml(ofp);
+      document.getElementById("rnOfpResult").innerHTML = ofpDetailHtml(ofp, "rnRouteMap");
       renderChartGallery("rnRouteMap", extractCharts(ofp));
     } catch (err) {
       console.error("RouteDB: SimBrief popup generation failed", err);
