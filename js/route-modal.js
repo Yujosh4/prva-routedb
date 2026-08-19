@@ -44,11 +44,18 @@ function runwayNotesHtml(origin, destination) {
 
 function wxCardHtml(icao, label, wx, loading) {
   if (loading) return `<div class="rn-wx-card"><span class="rn-wx-code">${escapeHtml(icao)}</span><div class="rn-wx-loading">Loading weather…</div></div>`;
-  const raw = wx?.metar?.rawOb || wx?.metar?.raw_text;
+  // Live in-sim ATIS (a real controller currently staffing this airport)
+  // takes priority when available -- otherwise this is real-world METAR.
+  const isAtis = wx?.source === "atis" && wx?.atis;
+  const raw = isAtis ? wx.atis : wx?.metar?.rawOb || wx?.metar?.raw_text;
   return `
     <div class="rn-wx-card">
       <span class="rn-wx-code">${escapeHtml(icao)} <small>(${escapeHtml(label)})</small></span>
-      ${raw ? `<div class="rn-wx-raw">${escapeHtml(raw)}</div>` : `<div class="rn-wx-error">No current METAR available.</div>`}
+      ${
+        raw
+          ? `${isAtis ? `<span class="rn-recommended-badge" style="margin-left:0; margin-bottom:6px; display:inline-block;">Live ATIS</span>` : ""}<div class="rn-wx-raw">${escapeHtml(raw)}</div>`
+          : `<div class="rn-wx-error">No current METAR available.</div>`
+      }
     </div>`;
 }
 
