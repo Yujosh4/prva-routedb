@@ -10,10 +10,26 @@ const airlineSelect = document.getElementById("rnAirlineFilter");
 const daySelect = document.getElementById("rnDayFilter");
 const { openModal } = initRouteModal();
 
+const viewCalendarBtn = document.getElementById("viewCalendarBtn");
+const viewListBtn = document.getElementById("viewListBtn");
+const calMonthNav = document.getElementById("calMonthNav");
+const calMonthLabel = document.getElementById("calMonthLabel");
+const calPrevBtn = document.getElementById("calPrevBtn");
+const calNextBtn = document.getElementById("calNextBtn");
+const calendarView = document.getElementById("calendarView");
+const calGrid = document.getElementById("calGrid");
+const calDayModalOverlay = document.getElementById("calDayModalOverlay");
+const calDayModalClose = document.getElementById("calDayModalClose");
+const calDayModalBody = document.getElementById("calDayModalBody");
+
 const DAY_NAMES = { 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat", 7: "Sun" };
+const WEEKDAY_HEADERS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const MAX_CHIPS_PER_DAY = 3;
 
 let allEntries = [];
 let usingSampleData = false;
+let view = "calendar"; // "calendar" | "list"
+let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
 const SAMPLE_ENTRIES = [
   {
@@ -145,14 +161,14 @@ function entryCardHtml(entry) {
     </article>`;
 }
 
-function applyFilters() {
+function getFilteredEntries() {
   const q = searchInput.value.trim().toLowerCase();
   const origin = originSelect.value;
   const destination = destinationSelect.value;
   const airline = airlineSelect.value;
   const day = daySelect.value ? Number(daySelect.value) : null;
 
-  const filtered = allEntries.filter((e) => {
+  return allEntries.filter((e) => {
     const r = e.route;
     if (origin && r.origin?.icao !== origin) return false;
     if (destination && r.destination?.icao !== destination) return false;
@@ -165,29 +181,9 @@ function applyFilters() {
     }
     return true;
   });
-
-  renderGrid(filtered);
-  filterCount.textContent = `${filtered.length} flight${filtered.length === 1 ? "" : "s"}`;
 }
 
-function renderGrid(entries) {
-  if (entries === null) {
-    grid.innerHTML = `<div class="rn-error">Couldn't load the schedule right now. Try refreshing in a moment.</div>`;
-    return;
-  }
-  if (!entries.length) {
-    grid.innerHTML = `<div class="rn-empty">No scheduled flights match those filters.</div>`;
-    return;
-  }
-  grid.innerHTML = entries.map(entryCardHtml).join("");
-}
-
-grid.addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-details]");
-  if (!btn) return;
-  const entry = allEntries.find((x) => String(x.id) === btn.dataset.details);
-  if (!entry) return;
-
+function openEntryDetails(entry) {
   // The shared modal (route-modal.js) works on plain route objects -- flatten
   // this schedule entry into that shape, adding a careerInfo block for the
   // extra schedule-specific fields it doesn't otherwise know about.
@@ -197,21 +193,180 @@ grid.addEventListener("click", (e) => {
     ${entry.min_rank ? `<div><dt>Minimum Rank</dt><dd>${escapeHtml(entry.min_rank.name)}</dd></div>` : ""}
   `;
   openModal({ ...entry.route, airline: entry.airline, careerInfo });
+}
+
+// ---------- List view ----------
+function renderList() {
+  const filtered = getFilteredEntries();
+  if (allEntries === null) {
+    grid.innerHTML = `<div class="rn-error">Couldn't load the schedule right now. Try refreshing in a moment.</div>`;
+    return;
+  }
+  if (!filtered.length) {
+    grid.innerHTML = `<div class="rn-empty">No scheduled flights match those filters.</div>`;
+    filterCount.textContent = "0 flights";
+    return;
+  }
+  grid.innerHTML = filtered.map(entryCardHtml).join("");
+  filterCount.textContent = `${filtered.length} flight${filtered.length === 1 ? "" : "s"}`;
+}
+
+grid.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-details]");
+  if (!btn) return;
+  const entry = allEntries.find((x) => String(x.id) === btn.dataset.details);
+  if (entry) openEntryDetails(entry);
 });
 
+// ---------- Calendar view ----------
+// ISO weekday: 1=Monday .. 7=Sunday, matching career_schedules.days_of_week.
+function isoWeekday(date) {
+  const d = date.getDay(); // 0=Sunday..6=Saturday
+  return d === 0 ? 7 : d;
+}
+
+function renderCalendar() {
+  const filtered = getFilteredEntries();
+  filterCount.textContent = `${filtered.length} flight${filtered.length === 1 ? "" : "s"} this filter`;
+
+  const year = calMonth.getFullYear();
+  const month = calMonth.getMonth();
+  calMonthLabel.textContent = calMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+  const firstOfMonth = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const leadingBlanks = isoWeekday(firstOfMonth) - 1; // days before the 1st to pad the grid
+
+  const today = new Date();
+  const isToday = (day) => today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
+
+  let html = WEEKDAY_HEADERS.map((w) => `<div class="cal-weekday">${w}</div>`).join("");
+
+  for (let i = 0; i < leadingBlanks; i++) {
+    html += `<div class="cal-day cal-day-empty"></div>`;
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const weekday = isoWeekday(new Date(year, month, day));
+    const dayEntries = filtered
+      .filter((e) => (e.days_of_week || []).includes(weekday))
+      .sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
+
+    const visible = dayEntries.slice(0, MAX_CHIPS_PER_DAY);
+    const overflow = dayEntries.length - visible.length;
+
+    html += `
+      <div class="cal-day ${isToday(day) ? "cal-day-today" : ""} ${dayEntries.length ? "cal-has-flights" : ""}">
+        <span class="cal-day-num">${day}</span>
+        <div class="cal-day-flights">
+          ${visible.map((e) => `<span class="cal-flight-chip" data-entry="${escapeHtml(e.id)}" title="${escapeHtml(e.route.flight_number)} ${escapeHtml(formatTime12h(e.departure_time_local))}">${escapeHtml(e.route.flight_number)} ${escapeHtml(formatTime12h(e.departure_time_local))}</span>`).join("")}
+          ${overflow > 0 ? `<span class="cal-day-more" data-daylist="${weekday}">+${overflow} more</span>` : ""}
+        </div>
+      </div>`;
+  }
+
+  calGrid.innerHTML = html;
+
+  calGrid.querySelectorAll("[data-entry]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const entry = allEntries.find((x) => String(x.id) === chip.dataset.entry);
+      if (entry) openEntryDetails(entry);
+    });
+  });
+
+  calGrid.querySelectorAll("[data-daylist]").forEach((moreLink) => {
+    moreLink.addEventListener("click", () => {
+      const weekday = Number(moreLink.dataset.daylist);
+      const dayEntries = filtered
+        .filter((e) => (e.days_of_week || []).includes(weekday))
+        .sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
+      openDayListModal(DAY_NAMES[weekday], dayEntries);
+    });
+  });
+}
+
+function openDayListModal(dayLabel, entries) {
+  calDayModalBody.innerHTML = `
+    <h2>${escapeHtml(dayLabel)}'s Flights</h2>
+    <div class="rn-modal-section">
+      ${entries
+        .map(
+          (e) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line);">
+          <div>
+            <strong>${escapeHtml(e.route.flight_number)}</strong>
+            <span style="color:var(--muted); font-size:13px;"> -- ${escapeHtml(e.route.origin?.icao)} &rarr; ${escapeHtml(e.route.destination?.icao)}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:13px;">${escapeHtml(formatTime12h(e.departure_time_local))}</span>
+            <button type="button" class="btn btn-outline" data-daylist-entry="${escapeHtml(e.id)}">Details</button>
+          </div>
+        </div>`
+        )
+        .join("")}
+    </div>`;
+  calDayModalOverlay.classList.add("open");
+
+  calDayModalBody.querySelectorAll("[data-daylist-entry]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const entry = allEntries.find((x) => String(x.id) === btn.dataset.daylistEntry);
+      closeDayListModal();
+      if (entry) openEntryDetails(entry);
+    });
+  });
+}
+
+function closeDayListModal() {
+  calDayModalOverlay.classList.remove("open");
+  calDayModalBody.innerHTML = "";
+}
+
+calDayModalClose.addEventListener("click", closeDayListModal);
+calDayModalOverlay.addEventListener("click", (e) => { if (e.target === calDayModalOverlay) closeDayListModal(); });
+
+calPrevBtn.addEventListener("click", () => {
+  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1);
+  renderCalendar();
+});
+calNextBtn.addEventListener("click", () => {
+  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1);
+  renderCalendar();
+});
+
+// ---------- View switching ----------
+function setView(next) {
+  view = next;
+  viewCalendarBtn.dataset.active = String(view === "calendar");
+  viewListBtn.dataset.active = String(view === "list");
+  calendarView.style.display = view === "calendar" ? "block" : "none";
+  calMonthNav.style.display = view === "calendar" ? "flex" : "none";
+  grid.style.display = view === "list" ? "grid" : "none";
+  render();
+}
+
+viewCalendarBtn.addEventListener("click", () => setView("calendar"));
+viewListBtn.addEventListener("click", () => setView("list"));
+
+function render() {
+  if (view === "calendar") renderCalendar();
+  else renderList();
+}
+
 [searchInput, originSelect, destinationSelect, airlineSelect, daySelect].forEach((el) =>
-  el.addEventListener("input", applyFilters)
+  el.addEventListener("input", render)
 );
 
 (async function init() {
   const entries = await loadSchedule();
   if (entries === null) {
-    renderGrid(null);
+    allEntries = [];
+    grid.innerHTML = `<div class="rn-error">Couldn't load the schedule right now. Try refreshing in a moment.</div>`;
+    calGrid.innerHTML = "";
     return;
   }
   allEntries = entries;
   const banner = document.getElementById("rnSampleBanner");
   if (banner) banner.style.display = usingSampleData ? "block" : "none";
   populateFilterOptions(allEntries);
-  applyFilters();
+  render();
 })();

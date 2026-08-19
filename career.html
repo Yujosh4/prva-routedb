@@ -53,11 +53,34 @@
 
 <section class="rn-grid-wrap">
   <div class="section-inner">
-    <div class="rn-grid" id="rnGrid">
+    <div class="cal-toolbar">
+      <div class="cal-view-toggle">
+        <button type="button" class="btn btn-outline" id="viewCalendarBtn" data-active="true">Calendar</button>
+        <button type="button" class="btn btn-outline" id="viewListBtn">List</button>
+      </div>
+      <div class="cal-month-nav" id="calMonthNav" style="display:none;">
+        <button type="button" class="btn btn-outline" id="calPrevBtn">&larr;</button>
+        <span id="calMonthLabel"></span>
+        <button type="button" class="btn btn-outline" id="calNextBtn">&rarr;</button>
+      </div>
+    </div>
+
+    <div id="calendarView">
+      <div class="cal-grid" id="calGrid"></div>
+    </div>
+
+    <div class="rn-grid" id="rnGrid" style="display:none;">
       <div class="rn-empty">Loading schedule…</div>
     </div>
   </div>
 </section>
+
+<div class="rn-modal-overlay" id="calDayModalOverlay">
+  <div class="rn-modal">
+    <button type="button" class="rn-modal-close" id="calDayModalClose" aria-label="Close">&times;</button>
+    <div id="calDayModalBody"></div>
+  </div>
+</div>
 
 <div class="rn-modal-overlay" id="rnModalOverlay">
   <div class="rn-modal">
