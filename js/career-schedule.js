@@ -1,6 +1,6 @@
 import { supabase } from "./supabase-client.js";
 import { requireStaffSession } from "./auth-guard.js";
-import { CAREER_AIRLINES, ALL_DAYS as DAYS, assignPlausibleSchedule } from "./career-autofill.js";
+import { CAREER_AIRLINES, ALL_DAYS as DAYS, assignPlausibleSchedule, assignPlausibleTerminal } from "./career-autofill.js";
 
 await requireStaffSession();
 
@@ -14,6 +14,7 @@ const autoFillStatus = document.getElementById("autoFillStatus");
 
 let routes = [];
 let schedulesByRoute = new Map();
+let airlineNameById = new Map();
 
 function escapeHtml(str) {
   return String(str ?? "").replace(/[&<>"']/g, (c) => ({
@@ -21,21 +22,18 @@ function escapeHtml(str) {
   }[c]));
 }
 
-function assignPlausibleTime(route) {
-  return sharedAssignTime(route.flight_number, route.distance_nm);
-}
-
 async function loadAll() {
   const { data: airlines, error: airlinesErr } = await supabase
     .from("airlines").select("id, name").in("name", CAREER_AIRLINES);
   if (airlinesErr) throw airlinesErr;
   const airlineIds = airlines.map((a) => a.id);
+  airlineNameById = new Map(airlines.map((a) => [a.id, a.name]));
 
   const { data: routeRows, error: routesErr } = await supabase
     .from("routes")
     .select(`id, flight_number, distance_nm, airline_id,
-      origin:airports!routes_origin_icao_fkey(icao, city),
-      destination:airports!routes_destination_icao_fkey(icao, city)`)
+      origin:airports!routes_origin_icao_fkey(icao, city, country),
+      destination:airports!routes_destination_icao_fkey(icao, city, country)`)
     .in("airline_id", airlineIds).eq("active", true).eq("category", "current")
     .order("flight_number");
   if (routesErr) throw routesErr;
@@ -76,7 +74,11 @@ function rowHtml(route) {
       </div></td>
       <td><input type="checkbox" class="cs-active" ${s?.active === false ? "" : "checked"}> Active</td>
       <td><input type="text" class="cs-gate" value="${escapeHtml(s?.gate || "")}" placeholder="e.g. 24" style="width:60px;"></td>
-      <td><input type="text" class="cs-terminal" value="${escapeHtml(s?.terminal || "")}" placeholder="e.g. 1" style="width:60px;"></td>
+      <td><select class="cs-terminal" style="width:75px;">
+        <option value="" ${!s?.terminal ? "selected" : ""}>TBD</option>
+        <option value="T1" ${s?.terminal === "T1" ? "selected" : ""}>T1</option>
+        <option value="T2" ${s?.terminal === "T2" ? "selected" : ""}>T2</option>
+      </select></td>
       <td><input type="text" class="cs-notes" value="${escapeHtml(s?.notes || "")}" placeholder="Reason if suspended..."></td>
       <td>${s ? `<span style="font-size:10px;color:var(--muted);">${escapeHtml(s.source)}</span>` : `<span style="font-size:10px;color:var(--muted);">unscheduled</span>`}</td>
       <td><button type="button" class="btn btn-outline cs-save-btn" data-save="${route.id}">Save</button></td>
@@ -165,6 +167,12 @@ autoFillBtn.addEventListener("click", async () => {
     airline_id: route.airline_id,
     ...assignPlausibleSchedule(route.flight_number, route.distance_nm),
     active: true,
+    terminal: assignPlausibleTerminal(
+      airlineNameById.get(route.airline_id),
+      route.flight_number,
+      route.origin?.country,
+      route.destination?.country
+    ),
     source: "derived",
     notes: "Auto-assigned plausible schedule -- not sourced from real-world data.",
   }));

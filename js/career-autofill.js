@@ -63,6 +63,25 @@ export function assignPlausibleSchedule(flightNumber, distanceNm) {
   };
 }
 
+// NAIA terminal assignment -- real operational fact confirmed by Martin,
+// not a fabricated guess: PAL mainline splits Terminal 1 (international) /
+// Terminal 2 (domestic); PAL Express is Terminal 2 except its one
+// international pairing, PR521/PR522, which uses Terminal 1. Gate stays
+// staff-only (js/career-schedule.js) since it varies per flight in a way
+// this rule can't capture.
+const PAL_EXPRESS_INTL_FLIGHTS = new Set(["PR521", "PR522"]);
+
+export function assignPlausibleTerminal(airlineName, flightNumber, originCountry, destinationCountry) {
+  if (airlineName === "Philippine Airlines") {
+    const domestic = originCountry === "PH" && destinationCountry === "PH";
+    return domestic ? "T2" : "T1";
+  }
+  if (airlineName === "PAL Express") {
+    return PAL_EXPRESS_INTL_FLIGHTS.has(flightNumber) ? "T1" : "T2";
+  }
+  return null;
+}
+
 // Creates career_schedules rows for any of the given routes that don't
 // already have one, for the airlines Career Mode covers. Silently no-ops
 // for routes on other airlines, routes that are historic/inactive, or
@@ -75,6 +94,7 @@ export async function autoScheduleNewRoutes(supabase, insertedRoutes) {
     .from("airlines").select("id, name").in("name", CAREER_AIRLINES);
   if (airlinesErr || !airlines?.length) return { scheduled: 0, error: airlinesErr };
   const careerAirlineIds = new Set(airlines.map((a) => a.id));
+  const airlineNameById = new Map(airlines.map((a) => [a.id, a.name]));
 
   // Career Mode only covers routes actually being flown right now -- a
   // suspended or historic route shouldn't get a fabricated recurring
@@ -90,17 +110,29 @@ export async function autoScheduleNewRoutes(supabase, insertedRoutes) {
   if (existingErr) return { scheduled: 0, error: existingErr };
   const alreadyScheduled = new Set((existing || []).map((s) => s.route_id));
 
-  const toInsert = eligible
-    .filter((r) => !alreadyScheduled.has(r.id))
-    .map((r) => ({
-      route_id: r.id,
-      airline_id: r.airline_id,
-      ...assignPlausibleSchedule(r.flight_number, r.distance_nm),
-      active: true,
-      source: "derived",
-      notes: "Auto-assigned at import time -- not sourced from real-world data.",
-    }));
-  if (!toInsert.length) return { scheduled: 0 };
+  const toSchedule = eligible.filter((r) => !alreadyScheduled.has(r.id));
+  if (!toSchedule.length) return { scheduled: 0 };
+
+  const icaos = [...new Set(toSchedule.flatMap((r) => [r.origin_icao, r.destination_icao]))];
+  const { data: airports, error: airportsErr } = await supabase
+    .from("airports").select("icao, country").in("icao", icaos);
+  if (airportsErr) return { scheduled: 0, error: airportsErr };
+  const countryByIcao = new Map((airports || []).map((a) => [a.icao, a.country]));
+
+  const toInsert = toSchedule.map((r) => ({
+    route_id: r.id,
+    airline_id: r.airline_id,
+    ...assignPlausibleSchedule(r.flight_number, r.distance_nm),
+    active: true,
+    terminal: assignPlausibleTerminal(
+      airlineNameById.get(r.airline_id),
+      r.flight_number,
+      countryByIcao.get(r.origin_icao),
+      countryByIcao.get(r.destination_icao)
+    ),
+    source: "derived",
+    notes: "Auto-assigned at import time -- not sourced from real-world data.",
+  }));
 
   const { error: insertErr } = await supabase.from("career_schedules").insert(toInsert);
   if (insertErr) return { scheduled: 0, error: insertErr };
