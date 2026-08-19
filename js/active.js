@@ -39,12 +39,17 @@ function saveEntries(entries) {
   }
 }
 
+// This is only shown until the pilot clicks "Check SimBrief Status" in the
+// current session -- once that succeeds, ofpDetailHtml's Flight Plan
+// Summary covers the same route/block-time (plus far more), and its own
+// Charts section covers the same chart gallery, so this gets hidden rather
+// than shown alongside it (see the check handler below).
 function ofpSummaryHtml(ofp, index) {
   if (!ofp) return "";
   const block = ofp.block_minutes != null ? `${Math.floor(ofp.block_minutes / 60)}h ${ofp.block_minutes % 60}m` : null;
   const hasKnownFields = ofp.aircraft || ofp.route || block;
   return `
-    <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--line); font-size:12px;">
+    <div id="rnOfpCompact-${index}" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--line); font-size:12px;">
       ${ofp.aircraft ? `<div><strong>Aircraft:</strong> ${escapeHtml(ofp.aircraft)}</div>` : ""}
       ${ofp.route ? `<div><strong>Route:</strong> ${escapeHtml(ofp.route)}</div>` : ""}
       ${block ? `<div><strong>Block time:</strong> ${block}</div>` : ""}
@@ -124,6 +129,11 @@ grid.addEventListener("click", async (e) => {
       entry.ofp_checked_at = new Date().toISOString();
       saveEntries(entries);
       render();
+      // Hide the compact summary for this card -- ofpDetailHtml below
+      // covers the same route/block-time/charts plus far more, so showing
+      // both would just duplicate the route text and the chart gallery.
+      const compactEl = document.getElementById(`rnOfpCompact-${idx}`);
+      if (compactEl) compactEl.style.display = "none";
       const fullEl = document.getElementById(`rnOfpFull-${idx}`);
       if (fullEl) {
         const mapId = `rnFullMap-${idx}`;
