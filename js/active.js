@@ -1,4 +1,4 @@
-import { fetchLatestOfp } from "./simbrief.js";
+import { fetchLatestOfp, summarizeOfp } from "./simbrief.js";
 import { renderRouteMap } from "./route-map.js";
 
 const STORAGE_KEY = "prva-routedb-active-routes";
@@ -22,33 +22,35 @@ function loadEntries() {
   return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
 }
 
+// Only ever stores the small, summarized OFP shape (see simbrief.js's
+// summarizeOfp) -- a full OFP is large enough that a couple of entries can
+// blow through localStorage's ~5-10MB quota. Still defensive on top of
+// that: drops the oldest entries and retries rather than losing the write.
 function saveEntries(entries) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  let toStore = entries.slice(0, 20);
+  while (toStore.length > 0) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
+      return;
+    } catch {
+      toStore = toStore.slice(0, -1);
+    }
+  }
 }
 
-// Defensive: SimBrief's JSON field names are documented well enough to be
-// fairly confident about, but not verified against a real account here, so
-// this falls back to a raw JSON view rather than silently showing nothing
-// if a field is missing or named differently than expected.
 function ofpSummaryHtml(ofp, index) {
   if (!ofp) return "";
-  const aircraft = ofp.aircraft?.icaocode || ofp.aircraft?.name;
-  const route = ofp.general?.route;
-  const block = ofp.times?.est_time_enroute
-    ? `${Math.floor(ofp.times.est_time_enroute / 3600)}h ${Math.round((ofp.times.est_time_enroute % 3600) / 60)}m`
+  const block = ofp.block_seconds
+    ? `${Math.floor(ofp.block_seconds / 3600)}h ${Math.round((ofp.block_seconds % 3600) / 60)}m`
     : null;
-  const hasKnownFields = aircraft || route || block;
+  const hasKnownFields = ofp.aircraft || ofp.route || block;
   return `
     <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--line); font-size:12px;">
-      ${aircraft ? `<div><strong>Aircraft:</strong> ${escapeHtml(aircraft)}</div>` : ""}
-      ${route ? `<div><strong>Route:</strong> ${escapeHtml(route)}</div>` : ""}
+      ${ofp.aircraft ? `<div><strong>Aircraft:</strong> ${escapeHtml(ofp.aircraft)}</div>` : ""}
+      ${ofp.route ? `<div><strong>Route:</strong> ${escapeHtml(ofp.route)}</div>` : ""}
       ${block ? `<div><strong>Block time:</strong> ${block}</div>` : ""}
-      ${!hasKnownFields ? `<div>Flight plan found -- see raw data below.</div>` : ""}
+      ${!hasKnownFields ? `<div>Flight plan found, but no summary fields recognized.</div>` : ""}
       <div id="rnActiveMap-${index}" class="rn-route-map" style="margin-top:10px; display:none;"></div>
-      <details style="margin-top:6px;">
-        <summary style="cursor:pointer; color:var(--muted);">Raw OFP data</summary>
-        <pre style="white-space:pre-wrap; word-break:break-word; font-size:11px; margin-top:6px;">${escapeHtml(JSON.stringify(ofp, null, 2))}</pre>
-      </details>
     </div>`;
 }
 
@@ -87,10 +89,10 @@ function render() {
   }
   grid.innerHTML = entries.map(cardHtml).join("");
   entries.forEach((entry, index) => {
-    if (!entry.ofp) return;
+    if (!entry.ofp?.points) return;
     const mapEl = document.getElementById(`rnActiveMap-${index}`);
     if (mapEl) mapEl.style.display = "block";
-    const mapped = renderRouteMap(`rnActiveMap-${index}`, entry.ofp);
+    const mapped = renderRouteMap(`rnActiveMap-${index}`, entry.ofp.points);
     if (!mapped && mapEl) mapEl.style.display = "none";
   });
 }
@@ -116,7 +118,7 @@ grid.addEventListener("click", async (e) => {
     status.className = "rn-sb-status";
     try {
       const ofp = await fetchLatestOfp(entry.simbrief_id);
-      entry.ofp = ofp;
+      entry.ofp = summarizeOfp(ofp);
       entry.ofp_checked_at = new Date().toISOString();
       saveEntries(entries);
       render();

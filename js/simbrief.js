@@ -15,6 +15,7 @@
 //     dispatch form -- generation happens in the popup, then this fetches
 //     the result back via fetchLatestOfp once it closes.
 import { supabase } from "./supabase-client.js";
+import { extractRoutePoints } from "./route-map.js";
 
 // ICAO type designators are stable, well-established identifiers -- this
 // list only covers aircraft actually seen in PRVA's route data so far.
@@ -134,4 +135,20 @@ export async function generateViaPopup({ origin, destination, aircraftTypes, fli
 
   await waitForPopupClose(popup);
   return fetchLatestOfp(username);
+}
+
+// A full SimBrief OFP is large (full navlog, weather, weights, everything)
+// -- easily hundreds of KB per plan, which blows through localStorage's
+// ~5-10MB quota after just a couple of entries. Active Route only ever
+// needs a handful of summary fields plus map points, so that's all that
+// gets persisted -- the full object is only held in memory right after
+// generation, never written to storage.
+export function summarizeOfp(ofp) {
+  if (!ofp) return null;
+  return {
+    aircraft: ofp.aircraft?.icaocode || ofp.aircraft?.name || null,
+    route: ofp.general?.route || null,
+    block_seconds: ofp.times?.est_time_enroute ?? null,
+    points: extractRoutePoints(ofp),
+  };
 }

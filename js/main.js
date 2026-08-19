@@ -1,7 +1,7 @@
 import { supabase } from "./supabase-client.js";
 import { fetchAirportWeather } from "./weather.js";
-import { buildDispatchUrl, generateViaPopup } from "./simbrief.js";
-import { renderRouteMap } from "./route-map.js";
+import { buildDispatchUrl, generateViaPopup, summarizeOfp } from "./simbrief.js";
+import { renderRouteMap, extractRoutePoints } from "./route-map.js";
 
 const grid = document.getElementById("rnGrid");
 const filterCount = document.getElementById("rnFilterCount");
@@ -342,11 +342,11 @@ function openSimbriefStep(route) {
         },
         sbId
       );
-      saveActiveRoute(sbId, route, ofp);
+      saveActiveRoute(sbId, route, summarizeOfp(ofp));
       status.textContent = "Flight plan generated and filed -- also saved to your Active Route page.";
       status.className = "rn-sb-status success";
       document.getElementById("rnOfpResult").innerHTML = ofpResultHtml(ofp);
-      const mapped = renderRouteMap("rnRouteMap", ofp);
+      const mapped = renderRouteMap("rnRouteMap", extractRoutePoints(ofp));
       if (!mapped) document.getElementById("rnRouteMap").outerHTML = "";
     } catch (err) {
       console.error("RouteDB: SimBrief popup generation failed", err);
@@ -383,9 +383,19 @@ function saveActiveRoute(simbriefId, route, ofp) {
     origin: route.origin?.icao,
     destination: route.destination?.icao,
     committed_at: new Date().toISOString(),
-    ofp: ofp || null,
+    ofp: ofp || null, // expects the summarized shape from simbrief.js's summarizeOfp(), not the raw OFP
   });
-  localStorage.setItem(key, JSON.stringify(existing.slice(0, 20)));
+  // Defensive: even summarized entries could theoretically add up. Drop the
+  // oldest ones and retry rather than losing this write outright.
+  let toStore = existing.slice(0, 20);
+  while (toStore.length > 0) {
+    try {
+      localStorage.setItem(key, JSON.stringify(toStore));
+      return;
+    } catch {
+      toStore = toStore.slice(0, -1);
+    }
+  }
 }
 
 function closeModal() {
