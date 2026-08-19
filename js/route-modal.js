@@ -27,6 +27,19 @@ function formatTime(minutes) {
   return `${h}h ${m}m`;
 }
 
+function runwayNotesHtml(origin, destination) {
+  const notes = [
+    origin?.runway_notes ? { icao: origin.icao, text: origin.runway_notes } : null,
+    destination?.runway_notes ? { icao: destination.icao, text: destination.runway_notes } : null,
+  ].filter(Boolean);
+  if (!notes.length) return "";
+  return `
+    <div class="rn-modal-section">
+      <h4>Known Runway Notes</h4>
+      ${notes.map((n) => `<p style="font-size:13px; color:var(--muted); margin-bottom:6px;"><strong>${escapeHtml(n.icao)}:</strong> ${escapeHtml(n.text)}</p>`).join("")}
+    </div>`;
+}
+
 function wxCardHtml(icao, label, wx, loading) {
   if (loading) return `<div class="rn-wx-card"><span class="rn-wx-code">${escapeHtml(icao)}</span><div class="rn-wx-loading">Loading weather…</div></div>`;
   const raw = wx?.metar?.rawOb || wx?.metar?.raw_text;
@@ -202,6 +215,8 @@ export function initRouteModal() {
           ${wxCardHtml(d.icao, "destination", null, true)}
         </div>
       </div>
+
+      ${runwayNotesHtml(o, d)}
 
       <div class="rn-modal-actions">
         <button type="button" class="btn btn-primary" data-fly="${escapeHtml(route.id)}">Fly This Route</button>

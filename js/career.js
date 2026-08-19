@@ -1,7 +1,8 @@
 import { supabase } from "./supabase-client.js";
 import { initRouteModal } from "./route-modal.js";
-import { minutesToEffectiveDeparture, urgencyClass, formatCountdown } from "./career-time.js";
+import { minutesToEffectiveDeparture, urgencyClass, formatCountdown, airportLocalDateKey } from "./career-time.js";
 import { hashString } from "./career-autofill.js";
+import { simulatedDisruption, disruptionClass, disruptionLabel } from "./career-disruptions.js";
 
 const grid = document.getElementById("rnGrid");
 const filterCount = document.getElementById("rnFilterCount");
@@ -86,8 +87,8 @@ async function loadSchedule() {
       .select(
         `id, departure_time_local, days_of_week, gate, terminal, source, notes,
          route:routes(id, flight_number, aircraft_types, liveries, distance_nm, flight_time_minutes, category,
-           origin:airports!routes_origin_icao_fkey(icao, iata, name, city),
-           destination:airports!routes_destination_icao_fkey(icao, iata, name, city)),
+           origin:airports!routes_origin_icao_fkey(icao, iata, name, city, runway_notes),
+           destination:airports!routes_destination_icao_fkey(icao, iata, name, city, runway_notes)),
          airline:airlines(name, logo_url, is_mainline),
          min_rank:ranks(name, sort_order)`
       )
@@ -128,17 +129,39 @@ function formatFlightTime(minutes) {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
+// Simulated status for TODAY specifically (at the origin airport's own
+// date) -- distinct from entryDisruptionForDate, which can look at any
+// calendar date shown on the grid, not just today.
+function entryDisruptionToday(entry) {
+  const dateKey = airportLocalDateKey(entry.route.origin?.icao);
+  return simulatedDisruption(entry.id, dateKey);
+}
+
+function entryDisruptionForDate(entry, dateKey) {
+  return simulatedDisruption(entry.id, dateKey);
+}
+
 // Only returns a value when this entry operates on the origin airport's
 // current local weekday -- a countdown to a day that isn't "today" there
-// isn't meaningful, so it's simply omitted rather than shown wrong.
+// isn't meaningful, so it's simply omitted rather than shown wrong. A
+// cancelled flight has no countdown at all; a delayed one counts down to
+// the delayed time, not the original schedule.
 function entryCountdownMinutes(entry) {
-  return minutesToEffectiveDeparture(entry.route.origin?.icao, entry.departure_time_local, entry.days_of_week);
+  const disruption = entryDisruptionToday(entry);
+  if (disruption.status === "cancelled") return null;
+  return minutesToEffectiveDeparture(entry.route.origin?.icao, entry.departure_time_local, entry.days_of_week, disruption.delayMinutes);
 }
 
 function countdownBadgeHtml(entry) {
   const minutes = entryCountdownMinutes(entry);
   if (minutes === null) return "";
   return `<span class="rn-tag cal-urgency-tag ${urgencyClass(minutes)}">${escapeHtml(formatCountdown(minutes))}</span>`;
+}
+
+function disruptionBadgeHtml(disruption) {
+  const label = disruptionLabel(disruption);
+  if (!label) return "";
+  return `<span class="rn-tag ${disruptionClass(disruption.status)}">${escapeHtml(label)}</span>`;
 }
 
 function gateTerminalHtml(entry) {
@@ -208,6 +231,7 @@ function entryCardHtml(entry) {
         <span class="rn-tag">${escapeHtml(formatDays(entry.days_of_week))}</span>
         <span class="rn-tag">${formatFlightTime(r.flight_time_minutes)}</span>
         ${gateTerminalHtml(entry)}
+        ${disruptionBadgeHtml(entryDisruptionToday(entry))}
         ${countdownBadgeHtml(entry)}
       </div>
       <div class="rn-card-actions">
@@ -279,11 +303,14 @@ function openEntryDetails(entry) {
   // this schedule entry into that shape, adding a careerInfo block for the
   // extra schedule-specific fields it doesn't otherwise know about.
   const minutes = entryCountdownMinutes(entry);
+  const disruption = entryDisruptionToday(entry);
+  const disruptionLbl = disruptionLabel(disruption);
   const careerInfo = `
     <div><dt>Scheduled Departure</dt><dd>${escapeHtml(formatTime12h(entry.departure_time_local))} local</dd></div>
     <div><dt>Operates</dt><dd>${escapeHtml(formatDays(entry.days_of_week))}</dd></div>
     ${entry.terminal ? `<div><dt>Terminal</dt><dd>${escapeHtml(entry.terminal)}</dd></div>` : ""}
     ${entry.gate ? `<div><dt>Gate</dt><dd>${escapeHtml(entry.gate)}</dd></div>` : ""}
+    ${disruptionLbl ? `<div><dt>Today's Status</dt><dd class="${disruptionClass(disruption.status)}">${escapeHtml(disruptionLbl)}</dd></div>` : ""}
     ${minutes !== null ? `<div><dt>Countdown</dt><dd class="${urgencyClass(minutes)}">${escapeHtml(formatCountdown(minutes))} (incl. 5min buffer)</dd></div>` : ""}
     ${entry.min_rank ? `<div><dt>Minimum Rank</dt><dd>${escapeHtml(entry.min_rank.name)}</dd></div>` : ""}
   `;
@@ -362,7 +389,7 @@ function renderCalendar() {
     // preview per calendar date instead -- deterministic, so the same day
     // always shows the same preview on reload, but different days feature
     // different flights from that day's roster.
-    const dateKey = `${year}-${month + 1}-${day}`;
+    const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const displayOrder = todayCell
       ? [...dayEntries].sort((a, b) => {
           const ma = entryCountdownMinutes(a);
@@ -378,7 +405,7 @@ function renderCalendar() {
     const overflow = dayEntries.length - visible.length;
 
     html += `
-      <div class="cal-day ${todayCell ? "cal-day-today" : ""} ${dayEntries.length ? "cal-has-flights" : ""}" ${dayEntries.length ? `data-daycell="${weekday}"` : ""}>
+      <div class="cal-day ${todayCell ? "cal-day-today" : ""} ${dayEntries.length ? "cal-has-flights" : ""}" ${dayEntries.length ? `data-daycell="${weekday}" data-date="${dateKey}"` : ""}>
         <span class="cal-day-num">${day}</span>
         <div class="cal-day-flights">
           ${visible
@@ -389,14 +416,17 @@ function renderCalendar() {
               // and no inline countdown text, so a busy day doesn't read as a
               // wall of red -- the full countdown is one click away.
               const minutes = todayCell ? entryCountdownMinutes(e) : null;
-              const cls = minutes !== null ? urgencyClass(minutes) : "";
-              const title = minutes !== null
-                ? `${e.route.flight_number} ${formatTime12h(e.departure_time_local)} -- ${formatCountdown(minutes)}`
-                : `${e.route.flight_number} ${formatTime12h(e.departure_time_local)}`;
+              const disruption = todayCell ? entryDisruptionToday(e) : entryDisruptionForDate(e, dateKey);
+              const cls = [minutes !== null ? urgencyClass(minutes) : "", disruptionClass(disruption.status)].filter(Boolean).join(" ");
+              const disruptionLbl = disruptionLabel(disruption);
+              const titleParts = [`${e.route.flight_number} ${formatTime12h(e.departure_time_local)}`];
+              if (disruptionLbl) titleParts.push(disruptionLbl);
+              else if (minutes !== null) titleParts.push(formatCountdown(minutes));
+              const title = titleParts.join(" -- ");
               return `<span class="cal-flight-chip ${cls}" data-entry="${escapeHtml(e.id)}" title="${escapeHtml(title)}">${escapeHtml(e.route.flight_number)} ${escapeHtml(formatTime12h(e.departure_time_local))}</span>`;
             })
             .join("")}
-          ${overflow > 0 ? `<span class="cal-day-more" data-daylist="${weekday}">+${overflow} more</span>` : ""}
+          ${overflow > 0 ? `<span class="cal-day-more" data-daylist="${weekday}" data-date="${dateKey}">+${overflow} more</span>` : ""}
         </div>
       </div>`;
   }
@@ -415,10 +445,11 @@ function renderCalendar() {
     moreLink.addEventListener("click", (e) => {
       e.stopPropagation();
       const weekday = Number(moreLink.dataset.daylist);
+      const dateKey = moreLink.dataset.date;
       const dayEntries = filtered
         .filter((e) => (e.days_of_week || []).includes(weekday))
         .sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
-      openDayListModal(DAY_NAMES[weekday], dayEntries);
+      openDayListModal(DAY_NAMES[weekday], dayEntries, dateKey);
     });
   });
 
@@ -428,21 +459,31 @@ function renderCalendar() {
   calGrid.querySelectorAll("[data-daycell]").forEach((cell) => {
     cell.addEventListener("click", () => {
       const weekday = Number(cell.dataset.daycell);
+      const dateKey = cell.dataset.date;
       const dayEntries = filtered
         .filter((e) => (e.days_of_week || []).includes(weekday))
         .sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
-      openDayListModal(DAY_NAMES[weekday], dayEntries);
+      openDayListModal(DAY_NAMES[weekday], dayEntries, dateKey);
     });
   });
 }
 
-function openDayListModal(dayLabel, entries) {
+function isViewerToday(dateKey) {
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return dateKey === todayKey;
+}
+
+function openDayListModal(dayLabel, entries, dateKey) {
+  const isTodayDate = isViewerToday(dateKey);
   calDayModalBody.innerHTML = `
     <h2>${escapeHtml(dayLabel)}'s Flights</h2>
     <div class="rn-modal-section">
       ${entries
         .map((e) => {
-          const minutes = entryCountdownMinutes(e);
+          const disruption = isTodayDate ? entryDisruptionToday(e) : entryDisruptionForDate(e, dateKey);
+          const minutes = disruption.status === "cancelled" ? null : entryCountdownMinutes(e);
+          const disruptionLbl = disruptionLabel(disruption);
           const gt = [e.terminal ? `T${e.terminal}` : "", e.gate ? `Gate ${e.gate}` : ""].filter(Boolean).join(" / ");
           return `
         <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line);">
@@ -450,6 +491,7 @@ function openDayListModal(dayLabel, entries) {
             <strong>${escapeHtml(e.route.flight_number)}</strong>
             <span style="color:var(--muted); font-size:13px;"> -- ${escapeHtml(e.route.origin?.icao)} &rarr; ${escapeHtml(e.route.destination?.icao)}</span>
             ${gt ? `<span style="color:var(--muted); font-size:12px; display:block;">${escapeHtml(gt)}</span>` : ""}
+            ${disruptionLbl ? `<span class="rn-tag ${disruptionClass(disruption.status)}" style="margin-top:4px; display:inline-block;">${escapeHtml(disruptionLbl)}</span>` : ""}
           </div>
           <div style="display:flex; align-items:center; gap:10px;">
             ${minutes !== null ? `<span class="rn-tag cal-urgency-tag ${urgencyClass(minutes)}">${escapeHtml(formatCountdown(minutes))}</span>` : ""}

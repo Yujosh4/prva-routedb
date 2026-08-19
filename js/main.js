@@ -82,8 +82,8 @@ async function loadRoutes() {
       .from("routes")
       .select(
         `id, flight_number, distance_nm, flight_time_minutes, aircraft_types, liveries, notes, active, category,
-         origin:airports!routes_origin_icao_fkey(icao, iata, name, city),
-         destination:airports!routes_destination_icao_fkey(icao, iata, name, city),
+         origin:airports!routes_origin_icao_fkey(icao, iata, name, city, runway_notes),
+         destination:airports!routes_destination_icao_fkey(icao, iata, name, city, runway_notes),
          airline:airlines(name, logo_url, is_mainline)`
       )
       .eq("active", true)
