@@ -1,6 +1,7 @@
 import { supabase } from "./supabase-client.js";
 import { initRouteModal } from "./route-modal.js";
 import { minutesToEffectiveDeparture, urgencyClass, formatCountdown } from "./career-time.js";
+import { hashString } from "./career-autofill.js";
 
 const grid = document.getElementById("rnGrid");
 const filterCount = document.getElementById("rnFilterCount");
@@ -30,9 +31,25 @@ const WEEKDAY_HEADERS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_CHIPS_PER_DAY = 3;
 
 let allEntries = [];
+let rosterByScheduleMonth = new Map(); // schedule id -> Set<'YYYY-MM'>
 let usingSampleData = false;
 let view = "calendar"; // "calendar" | "list"
 let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+function currentYearMonth() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function calMonthYearMonth() {
+  return `${calMonth.getFullYear()}-${String(calMonth.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// Career Mode only shows routes staff explicitly put in the roster for a
+// given month -- a month nobody has generated a roster for yet must render
+// completely blank, not fall back to whatever another month has.
+function entryInRosterForMonth(entry, yearMonth) {
+  return rosterByScheduleMonth.get(entry.id)?.has(yearMonth) || false;
+}
 
 const SAMPLE_ENTRIES = [
   {
@@ -60,6 +77,7 @@ function escapeHtml(str) {
 async function loadSchedule() {
   if (!supabase) {
     usingSampleData = true;
+    rosterByScheduleMonth = new Map([[SAMPLE_ENTRIES[0].id, new Set([currentYearMonth()])]]);
     return SAMPLE_ENTRIES;
   }
   try {
@@ -74,9 +92,18 @@ async function loadSchedule() {
          min_rank:ranks(name, sort_order)`
       )
       .eq("active", true)
-      .eq("in_career_mode", true)
       .order("departure_time_local");
     if (error) throw error;
+
+    const { data: rosterRows, error: rosterErr } = await supabase
+      .from("career_mode_roster").select("schedule_id, year_month");
+    if (rosterErr) throw rosterErr;
+    rosterByScheduleMonth = new Map();
+    (rosterRows || []).forEach((r) => {
+      if (!rosterByScheduleMonth.has(r.schedule_id)) rosterByScheduleMonth.set(r.schedule_id, new Set());
+      rosterByScheduleMonth.get(r.schedule_id).add(r.year_month);
+    });
+
     return (data || []).filter((e) => e.route); // drop any orphaned rows defensively
   } catch (err) {
     console.error("Career Mode: failed to load schedule", err);
@@ -191,7 +218,7 @@ function entryCardHtml(entry) {
 
 const QUICK_FILTER_MAX_MINUTES = { "1h": 60, "3h": 180 };
 
-function getFilteredEntries() {
+function getFilteredEntries(yearMonth) {
   const q = searchInput.value.trim().toLowerCase();
   const origin = originSelect.value;
   const destination = destinationSelect.value;
@@ -201,6 +228,7 @@ function getFilteredEntries() {
   const sortBy = sortBySelect.value;
 
   let result = allEntries.filter((e) => {
+    if (!entryInRosterForMonth(e, yearMonth)) return false;
     const r = e.route;
     if (origin && r.origin?.icao !== origin) return false;
     if (destination && r.destination?.icao !== destination) return false;
@@ -264,7 +292,7 @@ function openEntryDetails(entry) {
 
 // ---------- List view ----------
 function renderList() {
-  const filtered = getFilteredEntries();
+  const filtered = getFilteredEntries(currentYearMonth());
   if (allEntries === null) {
     grid.innerHTML = `<div class="rn-error">Couldn't load the schedule right now. Try refreshing in a moment.</div>`;
     return;
@@ -293,7 +321,8 @@ function isoWeekday(date) {
 }
 
 function renderCalendar() {
-  const filtered = getFilteredEntries();
+  const yearMonth = calMonthYearMonth();
+  const filtered = getFilteredEntries(yearMonth);
   filterCount.textContent = `${filtered.length} flight${filtered.length === 1 ? "" : "s"} this filter`;
 
   const year = calMonth.getFullYear();
@@ -325,6 +354,15 @@ function renderCalendar() {
     // have the earliest clock time, which as the day goes on increasingly
     // means "already departed hours ago" while the flights someone might
     // actually want to fly sit buried behind "+N more".
+    //
+    // On every OTHER cell, always picking the 3 earliest-departure-time
+    // flights meant the same handful of daily-frequency routes won every
+    // single day, so the whole month looked identical at a glance even
+    // though the full day list (behind "+N more") did vary. Rotate the
+    // preview per calendar date instead -- deterministic, so the same day
+    // always shows the same preview on reload, but different days feature
+    // different flights from that day's roster.
+    const dateKey = `${year}-${month + 1}-${day}`;
     const displayOrder = todayCell
       ? [...dayEntries].sort((a, b) => {
           const ma = entryCountdownMinutes(a);
@@ -334,7 +372,7 @@ function renderCalendar() {
           if (aDeparted !== bDeparted) return aDeparted ? 1 : -1;
           return a.departure_time_local.localeCompare(b.departure_time_local);
         })
-      : dayEntries;
+      : [...dayEntries].sort((a, b) => hashString(dateKey + ":" + a.id) - hashString(dateKey + ":" + b.id));
 
     const visible = displayOrder.slice(0, MAX_CHIPS_PER_DAY);
     const overflow = dayEntries.length - visible.length;

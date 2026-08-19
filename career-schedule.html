@@ -58,17 +58,24 @@
   <div class="cs-section">
     <h3 style="margin-bottom:10px; font-size:15px;">Career Mode Roster</h3>
     <p style="font-size:13px; color:var(--muted); margin-bottom:14px;">
-      Career Mode only shows routes marked "in roster" below -- not every scheduled route, so pilots see a
-      manageable set of duty assignments instead of the whole network. Click Generate to pick a fresh, capped
-      selection from routes that already have a schedule (Auto-Fill those first if needed); re-running this
-      replaces the previous selection. You can also toggle individual routes in the table below by hand.
+      Career Mode only shows routes in the roster for the month a pilot is actually looking at -- a month with
+      no roster generated yet renders completely blank, it does not fall back to some other month's selection.
+      You can generate this month's roster, or get ahead of a busy month by generating next month's early --
+      but never further ahead than that, so a month always reflects a deliberate choice, not a stale default.
+      Click Generate to pick a fresh, capped selection from routes that already have a schedule (Auto-Fill those
+      first if needed); re-running it for the same month replaces that month's previous selection. You can also
+      toggle individual routes in the table below by hand for whichever month is selected here.
     </p>
     <div class="imp-row" style="display:flex; gap:14px; align-items:flex-end;">
+      <div class="imp-field" style="flex:0 0 220px;">
+        <label for="csRosterMonth" style="display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px;">Month</label>
+        <select id="csRosterMonth" style="width:100%; font-family:inherit; font-size:14px; padding:8px 10px; border:1px solid var(--line); border-radius:var(--radius-md);"></select>
+      </div>
       <div class="imp-field" style="flex:0 0 140px;">
         <label for="csRosterCap" style="display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px;">Roster cap</label>
         <input type="number" id="csRosterCap" value="50" min="1" style="width:100%; font-family:inherit; font-size:14px; padding:8px 10px; border:1px solid var(--line); border-radius:var(--radius-md);">
       </div>
-      <button type="button" class="btn btn-primary" id="csGenerateRosterBtn">Generate Roster for This Month</button>
+      <button type="button" class="btn btn-primary" id="csGenerateRosterBtn">Generate Roster for Selected Month</button>
     </div>
     <div class="rn-sb-status" id="csRosterStatus"></div>
   </div>

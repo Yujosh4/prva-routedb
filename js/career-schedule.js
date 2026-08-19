@@ -11,6 +11,7 @@ const tableWrap = document.getElementById("csTableWrap");
 const searchInput = document.getElementById("csSearch");
 const autoFillBtn = document.getElementById("autoFillBtn");
 const autoFillStatus = document.getElementById("autoFillStatus");
+const rosterMonthSelect = document.getElementById("csRosterMonth");
 const rosterCapInput = document.getElementById("csRosterCap");
 const generateRosterBtn = document.getElementById("csGenerateRosterBtn");
 const rosterStatus = document.getElementById("csRosterStatus");
@@ -18,11 +19,35 @@ const rosterStatus = document.getElementById("csRosterStatus");
 let routes = [];
 let schedulesByRoute = new Map();
 let airlineNameById = new Map();
+let rosterByScheduleMonth = new Map(); // schedule_id -> Set<'YYYY-MM'>
 
 function escapeHtml(str) {
   return String(str ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
+}
+
+function yearMonthInfo(monthOffset) {
+  const d = new Date();
+  d.setDate(1); // avoid month-length rollover (e.g. Jan 31 + 1 month skipping March)
+  d.setMonth(d.getMonth() + monthOffset);
+  return { value: d.toISOString().slice(0, 7), label: d.toLocaleDateString(undefined, { month: "long", year: "numeric" }) };
+}
+
+function targetMonth() {
+  return rosterMonthSelect.value;
+}
+
+function isInRoster(scheduleId, month) {
+  return rosterByScheduleMonth.get(scheduleId)?.has(month) || false;
+}
+
+function populateRosterMonthOptions() {
+  const thisMonth = yearMonthInfo(0);
+  const nextMonth = yearMonthInfo(1);
+  rosterMonthSelect.innerHTML = `
+    <option value="${thisMonth.value}">This Month (${thisMonth.label})</option>
+    <option value="${nextMonth.value}">Next Month (${nextMonth.label})</option>`;
 }
 
 async function loadAll() {
@@ -43,11 +68,20 @@ async function loadAll() {
 
   const { data: scheduleRows, error: schedErr } = await supabase
     .from("career_schedules")
-    .select("id, route_id, departure_time_local, days_of_week, active, gate, terminal, in_career_mode, source, notes");
+    .select("id, route_id, departure_time_local, days_of_week, active, gate, terminal, source, notes");
   if (schedErr) throw schedErr;
+
+  const { data: rosterRows, error: rosterErr } = await supabase
+    .from("career_mode_roster").select("schedule_id, year_month");
+  if (rosterErr) throw rosterErr;
 
   routes = routeRows;
   schedulesByRoute = new Map(scheduleRows.map((s) => [s.route_id, s]));
+  rosterByScheduleMonth = new Map();
+  (rosterRows || []).forEach((r) => {
+    if (!rosterByScheduleMonth.has(r.schedule_id)) rosterByScheduleMonth.set(r.schedule_id, new Set());
+    rosterByScheduleMonth.get(r.schedule_id).add(r.year_month);
+  });
 }
 
 function renderSummary() {
@@ -55,13 +89,14 @@ function renderSummary() {
   const suspended = scheduled.filter((r) => schedulesByRoute.get(r.id).active === false);
   const active = scheduled.filter((r) => schedulesByRoute.get(r.id).active !== false);
   const unscheduled = routes.length - scheduled.length;
-  const inRoster = scheduled.filter((r) => schedulesByRoute.get(r.id).in_career_mode).length;
+  const month = targetMonth();
+  const inRoster = scheduled.filter((r) => isInRoster(schedulesByRoute.get(r.id).id, month)).length;
   summaryEl.innerHTML = `
     <div><strong>${routes.length}</strong><div style="font-size:11px;color:var(--muted);">total routes</div></div>
     <div><strong>${active.length}</strong><div style="font-size:11px;color:var(--muted);">scheduled &amp; active</div></div>
     <div><strong>${suspended.length}</strong><div style="font-size:11px;color:var(--muted);">suspended</div></div>
     <div><strong>${unscheduled}</strong><div style="font-size:11px;color:var(--muted);">not yet scheduled</div></div>
-    <div><strong>${inRoster}</strong><div style="font-size:11px;color:var(--muted);">in Career Mode roster</div></div>`;
+    <div><strong>${inRoster}</strong><div style="font-size:11px;color:var(--muted);">in roster for selected month</div></div>`;
 }
 
 function rowHtml(route) {
@@ -69,6 +104,7 @@ function rowHtml(route) {
   const rowClass = !s ? "cs-row-none" : s.active === false ? "cs-row-suspended" : "";
   const time = s?.departure_time_local?.slice(0, 5) || "";
   const days = new Set(s?.days_of_week || DAYS);
+  const inRoster = s ? isInRoster(s.id, targetMonth()) : false;
   return `
     <tr class="${rowClass}" data-route="${route.id}">
       <td>${escapeHtml(route.flight_number)}</td>
@@ -78,7 +114,7 @@ function rowHtml(route) {
         ${DAYS.map((d) => `<label><span>${DAY_LABELS[d]}</span><input type="checkbox" class="cs-day" value="${d}" ${days.has(d) ? "checked" : ""}></label>`).join("")}
       </div></td>
       <td><input type="checkbox" class="cs-active" ${s?.active === false ? "" : "checked"}> Active</td>
-      <td><input type="checkbox" class="cs-in-career-mode" ${s?.in_career_mode ? "checked" : ""} ${!s ? "disabled" : ""}></td>
+      <td><input type="checkbox" class="cs-in-career-mode" ${inRoster ? "checked" : ""} ${!s ? "disabled" : ""}></td>
       <td><input type="text" class="cs-gate" value="${escapeHtml(s?.gate || "")}" placeholder="e.g. 24" style="width:60px;"></td>
       <td><select class="cs-terminal" style="width:75px;">
         <option value="" ${!s?.terminal ? "selected" : ""}>TBD</option>
@@ -95,7 +131,7 @@ function renderTable(filtered) {
   tableWrap.innerHTML = `
     <table class="cs-table">
       <thead><tr>
-        <th>Flight</th><th>Route</th><th>Time (local)</th><th>Days</th><th>Active</th><th>In CM</th><th>Gate</th><th>Term.</th><th>Notes</th><th>Source</th><th></th>
+        <th>Flight</th><th>Route</th><th>Time (local)</th><th>Days</th><th>Active</th><th>In CM (selected month)</th><th>Gate</th><th>Term.</th><th>Notes</th><th>Source</th><th></th>
       </tr></thead>
       <tbody>${filtered.map(rowHtml).join("")}</tbody>
     </table>`;
@@ -112,6 +148,22 @@ function applySearch() {
   renderTable(filtered);
 }
 
+async function setRosterMembership(scheduleId, month, shouldBeIn) {
+  const currentlyIn = isInRoster(scheduleId, month);
+  if (currentlyIn === shouldBeIn) return null;
+  if (shouldBeIn) {
+    const { error } = await supabase.from("career_mode_roster").insert({ schedule_id: scheduleId, year_month: month });
+    if (error) return error;
+    if (!rosterByScheduleMonth.has(scheduleId)) rosterByScheduleMonth.set(scheduleId, new Set());
+    rosterByScheduleMonth.get(scheduleId).add(month);
+  } else {
+    const { error } = await supabase.from("career_mode_roster").delete().eq("schedule_id", scheduleId).eq("year_month", month);
+    if (error) return error;
+    rosterByScheduleMonth.get(scheduleId)?.delete(month);
+  }
+  return null;
+}
+
 async function saveRow(routeId, tr) {
   const route = routes.find((r) => r.id === routeId);
   const time = tr.querySelector(".cs-time").value;
@@ -121,7 +173,7 @@ async function saveRow(routeId, tr) {
   }
   const days = [...tr.querySelectorAll(".cs-day:checked")].map((cb) => Number(cb.value));
   const active = tr.querySelector(".cs-active").checked;
-  const inCareerMode = tr.querySelector(".cs-in-career-mode").checked;
+  const wantsInRoster = tr.querySelector(".cs-in-career-mode").checked;
   const gate = tr.querySelector(".cs-gate").value.trim();
   const terminal = tr.querySelector(".cs-terminal").value.trim();
   const notes = tr.querySelector(".cs-notes").value.trim();
@@ -133,7 +185,6 @@ async function saveRow(routeId, tr) {
     departure_time_local: time + ":00",
     days_of_week: days.length ? days : DAYS,
     active,
-    in_career_mode: inCareerMode,
     gate: gate || null,
     terminal: terminal || null,
     source: existing?.source === "real_world_api" ? "real_world_api" : "manual",
@@ -149,6 +200,12 @@ async function saveRow(routeId, tr) {
     return;
   }
   schedulesByRoute.set(routeId, data);
+
+  const rosterErr = await setRosterMembership(data.id, targetMonth(), wantsInRoster);
+  if (rosterErr) {
+    alert("Schedule saved, but couldn't update roster membership: " + rosterErr.message);
+  }
+
   renderSummary();
   applySearch();
 }
@@ -201,6 +258,7 @@ autoFillBtn.addEventListener("click", async () => {
 
 generateRosterBtn.addEventListener("click", async () => {
   const cap = Math.max(1, parseInt(rosterCapInput.value, 10) || 50);
+  const month = targetMonth();
   const eligible = routes.filter((r) => schedulesByRoute.has(r.id));
   if (!eligible.length) {
     rosterStatus.textContent = "No scheduled routes yet -- use Auto-Fill first.";
@@ -209,40 +267,52 @@ generateRosterBtn.addEventListener("click", async () => {
   }
 
   generateRosterBtn.disabled = true;
-  rosterStatus.textContent = "Generating…";
+  rosterStatus.textContent = `Generating for ${month}…`;
   rosterStatus.className = "rn-sb-status";
 
-  // Seeded by the current year-month, not pure randomness, so re-clicking
-  // within the same month reproduces the same roster instead of reshuffling
-  // it every time -- and next month's click naturally gives fresh variety.
-  const monthSeed = new Date().toISOString().slice(0, 7);
+  // Seeded by the target year-month, not pure randomness, so re-clicking
+  // for the same month reproduces the same roster instead of reshuffling
+  // it every time -- and picking a different month naturally gives a
+  // different selection.
   const ranked = [...eligible].sort(
-    (a, b) => hashString(a.flight_number + ":" + monthSeed) - hashString(b.flight_number + ":" + monthSeed)
+    (a, b) => hashString(a.flight_number + ":" + month) - hashString(b.flight_number + ":" + month)
   );
   const selected = new Set(ranked.slice(0, cap).map((r) => r.id));
+  const scheduleIds = eligible.map((r) => schedulesByRoute.get(r.id).id);
+  const selectedScheduleIds = eligible.filter((r) => selected.has(r.id)).map((r) => schedulesByRoute.get(r.id).id);
 
-  const inIds = eligible.filter((r) => selected.has(r.id)).map((r) => schedulesByRoute.get(r.id).id);
-  const outIds = eligible.filter((r) => !selected.has(r.id)).map((r) => schedulesByRoute.get(r.id).id);
-
-  const [inRes, outRes] = await Promise.all([
-    inIds.length ? supabase.from("career_schedules").update({ in_career_mode: true }).in("id", inIds) : Promise.resolve({}),
-    outIds.length ? supabase.from("career_schedules").update({ in_career_mode: false }).in("id", outIds) : Promise.resolve({}),
-  ]);
+  // Full replace for this month only -- other months' rows are untouched.
+  const { error: delErr } = await supabase.from("career_mode_roster").delete().eq("year_month", month).in("schedule_id", scheduleIds);
+  if (delErr) {
+    generateRosterBtn.disabled = false;
+    rosterStatus.textContent = "Couldn't generate roster: " + delErr.message;
+    rosterStatus.className = "rn-sb-status error";
+    return;
+  }
+  const { error: insErr } = selectedScheduleIds.length
+    ? await supabase.from("career_mode_roster").insert(selectedScheduleIds.map((id) => ({ schedule_id: id, year_month: month })))
+    : { error: null };
 
   generateRosterBtn.disabled = false;
-  if (inRes.error || outRes.error) {
-    rosterStatus.textContent = "Couldn't generate roster: " + (inRes.error || outRes.error).message;
+  if (insErr) {
+    rosterStatus.textContent = "Couldn't generate roster: " + insErr.message;
     rosterStatus.className = "rn-sb-status error";
     return;
   }
 
-  eligible.forEach((r) => {
-    const s = schedulesByRoute.get(r.id);
-    schedulesByRoute.set(r.id, { ...s, in_career_mode: selected.has(r.id) });
+  scheduleIds.forEach((id) => rosterByScheduleMonth.get(id)?.delete(month));
+  selectedScheduleIds.forEach((id) => {
+    if (!rosterByScheduleMonth.has(id)) rosterByScheduleMonth.set(id, new Set());
+    rosterByScheduleMonth.get(id).add(month);
   });
 
-  rosterStatus.textContent = `Roster set: ${inIds.length} route${inIds.length === 1 ? "" : "s"} now in Career Mode (cap ${cap}).`;
+  rosterStatus.textContent = `Roster set for ${month}: ${selectedScheduleIds.length} route${selectedScheduleIds.length === 1 ? "" : "s"} (cap ${cap}).`;
   rosterStatus.className = "rn-sb-status success";
+  renderSummary();
+  applySearch();
+});
+
+rosterMonthSelect.addEventListener("change", () => {
   renderSummary();
   applySearch();
 });
@@ -257,6 +327,7 @@ document.getElementById("logoutLink").addEventListener("click", async (e) => {
 
 (async function init() {
   try {
+    populateRosterMonthOptions();
     await loadAll();
     renderSummary();
     applySearch();
