@@ -273,21 +273,71 @@ function openModal(route) {
   modalBody.querySelector("[data-fly]")?.addEventListener("click", () => openSimbriefStep(route));
 }
 
+function hms(str) {
+  const m = String(str || "").match(/^(\d+):(\d{2}):\d{2}$/);
+  return m ? `${m[1]}h ${m[2]}m` : null;
+}
+
+function fmtNum(n) {
+  const num = Number(n);
+  return isFinite(num) ? num.toLocaleString() : null;
+}
+
+function detailRow(label, value) {
+  return value != null && value !== "" ? `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>` : "";
+}
+
+// All field names below (crew, weights, fuel, atc, params.units, etc.) are
+// confirmed against a real generated OFP, not guessed.
 function ofpResultHtml(ofp) {
   const aircraft = ofp?.aircraft?.icaocode || ofp?.aircraft?.name;
-  const route = ofp?.general?.route;
-  // est_time_enroute is "HH:MM:SS" -- just read the first two segments.
-  const hmsMatch = String(ofp?.times?.est_time_enroute || "").match(/^(\d+):(\d{2}):\d{2}$/);
-  const block = hmsMatch ? `${hmsMatch[1]}h ${hmsMatch[2]}m` : null;
+  const reg = ofp?.aircraft?.reg;
+  const units = ofp?.params?.units === "lbs" ? "lb" : "kg";
+  const w = ofp?.weights || {};
+  const f = ofp?.fuel || {};
+
   return `
     <div class="rn-modal-section">
-      <h4>Your Flight Plan</h4>
+      <h4>Flight Info</h4>
       <dl class="rn-detail-grid">
-        ${aircraft ? `<div><dt>Aircraft</dt><dd>${escapeHtml(aircraft)}</dd></div>` : ""}
-        ${route ? `<div><dt>Route</dt><dd>${escapeHtml(route)}</dd></div>` : ""}
-        ${block ? `<div><dt>Block Time</dt><dd>${block}</dd></div>` : ""}
+        ${detailRow("Callsign", ofp?.atc?.callsign)}
+        ${detailRow("Aircraft", [aircraft, reg].filter(Boolean).join(" / "))}
+        ${detailRow("Departure Rwy", ofp?.origin?.plan_rwy)}
+        ${detailRow("Arrival Rwy", ofp?.destination?.plan_rwy)}
+        ${detailRow("Cruise Altitude", ofp?.general?.initial_altitude ? `FL${Math.round(ofp.general.initial_altitude / 100)}` : null)}
+        ${detailRow("Cruise Mach", ofp?.general?.cruise_mach)}
+        ${detailRow("Distance", ofp?.general?.gc_distance ? `${fmtNum(ofp.general.gc_distance)} nm` : null)}
+        ${detailRow("Passengers", ofp?.general?.passengers)}
       </dl>
-      <div id="rnRouteMap" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="rn-modal-section">
+      <h4>Flight Plan Summary</h4>
+      <dl class="rn-detail-grid">
+        ${detailRow("Route", ofp?.general?.route)}
+        ${detailRow("Block Time", hms(ofp?.times?.est_time_enroute))}
+        ${detailRow("Ramp Fuel", f.plan_ramp ? `${fmtNum(f.plan_ramp)} ${units}` : null)}
+        ${detailRow("Takeoff Fuel", f.plan_takeoff ? `${fmtNum(f.plan_takeoff)} ${units}` : null)}
+        ${detailRow("Trip Fuel (burn)", f.enroute_burn ? `${fmtNum(f.enroute_burn)} ${units}` : null)}
+      </dl>
+    </div>
+
+    <div class="rn-modal-section">
+      <h4>Load Sheet</h4>
+      <dl class="rn-detail-grid">
+        ${detailRow("Zero Fuel Weight", w.est_zfw ? `${fmtNum(w.est_zfw)} / ${fmtNum(w.max_zfw)} ${units}` : null)}
+        ${detailRow("Takeoff Weight", w.est_tow ? `${fmtNum(w.est_tow)} / ${fmtNum(w.max_tow)} ${units}` : null)}
+        ${detailRow("Landing Weight", w.est_ldw ? `${fmtNum(w.est_ldw)} / ${fmtNum(w.max_ldw)} ${units}` : null)}
+        ${detailRow("Payload", w.payload ? `${fmtNum(w.payload)} ${units}` : null)}
+        ${detailRow("Cargo", w.cargo ? `${fmtNum(w.cargo)} ${units}` : null)}
+        ${detailRow("Ramp Weight", w.est_ramp ? `${fmtNum(w.est_ramp)} ${units}` : null)}
+      </dl>
+      <p style="margin-top:10px; font-size:11px; color:var(--muted);">Est / Max shown where applicable.</p>
+    </div>
+
+    <div class="rn-modal-section">
+      <h4>Charts</h4>
+      <div id="rnRouteMap"></div>
     </div>`;
 }
 
