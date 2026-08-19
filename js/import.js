@@ -1,5 +1,6 @@
 import { supabase } from "./supabase-client.js";
 import { requireStaffSession } from "./auth-guard.js";
+import { autoScheduleNewRoutes } from "./career-autofill.js";
 
 await requireStaffSession();
 
@@ -293,14 +294,20 @@ importBtn.addEventListener("click", async () => {
     category,
   }));
 
-  const { error } = await supabase.from("routes").insert(payload);
+  const { data: inserted, error } = await supabase.from("routes").insert(payload).select();
   if (error) {
     importStatus.textContent = "Import failed: " + error.message;
     importStatus.className = "rn-sb-status error";
     importBtn.disabled = false;
     return;
   }
-  importStatus.textContent = `Imported ${validRows.length} routes.`;
+
+  // Automatic, no separate staff step: any PAL/PAL Express route just
+  // imported gets a plausible Career Mode departure time right away.
+  const { scheduled } = await autoScheduleNewRoutes(supabase, inserted);
+
+  importStatus.textContent = `Imported ${validRows.length} routes.` +
+    (scheduled ? ` ${scheduled} auto-scheduled for Career Mode.` : "");
   importStatus.className = "rn-sb-status success";
 });
 

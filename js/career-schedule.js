@@ -1,10 +1,9 @@
 import { supabase } from "./supabase-client.js";
 import { requireStaffSession } from "./auth-guard.js";
+import { CAREER_AIRLINES, ALL_DAYS as DAYS, assignPlausibleTime as sharedAssignTime } from "./career-autofill.js";
 
 await requireStaffSession();
 
-const CAREER_AIRLINES = ["Philippine Airlines", "PAL Express"];
-const DAYS = [1, 2, 3, 4, 5, 6, 7];
 const DAY_LABELS = { 1: "M", 2: "T", 3: "W", 4: "T", 5: "F", 6: "S", 7: "S" };
 
 const summaryEl = document.getElementById("csSummary");
@@ -22,27 +21,8 @@ function escapeHtml(str) {
   }[c]));
 }
 
-// Deterministic (not truly random) so re-running auto-fill never reassigns
-// a route that already has a time -- same flight number always hashes to
-// the same slot. Biased toward the pattern actually observed in the real
-// AviationStack import: long-haul PRVA departures cluster early-morning or
-// overnight, not evenly spread through the day.
-function hashString(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = (Math.imul(h, 31) + str.charCodeAt(i)) >>> 0;
-  return h;
-}
-
 function assignPlausibleTime(route) {
-  const hash = hashString(route.flight_number);
-  const distance = route.distance_nm || 0;
-  let hourOptions;
-  if (distance > 3000) hourOptions = [1, 2, 3, 6, 7, 22, 23, 0];
-  else if (distance > 800) hourOptions = [6, 7, 8, 17, 18, 19, 20];
-  else hourOptions = [5, 6, 8, 9, 11, 13, 15, 17, 19, 21];
-  const hour = hourOptions[hash % hourOptions.length];
-  const minute = Math.floor((hash / hourOptions.length) % 60);
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`;
+  return sharedAssignTime(route.flight_number, route.distance_nm);
 }
 
 async function loadAll() {
@@ -62,7 +42,7 @@ async function loadAll() {
 
   const { data: scheduleRows, error: schedErr } = await supabase
     .from("career_schedules")
-    .select("id, route_id, departure_time_local, days_of_week, active, source, notes");
+    .select("id, route_id, departure_time_local, days_of_week, active, gate, terminal, source, notes");
   if (schedErr) throw schedErr;
 
   routes = routeRows;
@@ -95,6 +75,8 @@ function rowHtml(route) {
         ${DAYS.map((d) => `<label><span>${DAY_LABELS[d]}</span><input type="checkbox" class="cs-day" value="${d}" ${days.has(d) ? "checked" : ""}></label>`).join("")}
       </div></td>
       <td><input type="checkbox" class="cs-active" ${s?.active === false ? "" : "checked"}> Active</td>
+      <td><input type="text" class="cs-gate" value="${escapeHtml(s?.gate || "")}" placeholder="e.g. 24" style="width:60px;"></td>
+      <td><input type="text" class="cs-terminal" value="${escapeHtml(s?.terminal || "")}" placeholder="e.g. 1" style="width:60px;"></td>
       <td><input type="text" class="cs-notes" value="${escapeHtml(s?.notes || "")}" placeholder="Reason if suspended..."></td>
       <td>${s ? `<span style="font-size:10px;color:var(--muted);">${escapeHtml(s.source)}</span>` : `<span style="font-size:10px;color:var(--muted);">unscheduled</span>`}</td>
       <td><button type="button" class="btn btn-outline cs-save-btn" data-save="${route.id}">Save</button></td>
@@ -105,7 +87,7 @@ function renderTable(filtered) {
   tableWrap.innerHTML = `
     <table class="cs-table">
       <thead><tr>
-        <th>Flight</th><th>Route</th><th>Time (local)</th><th>Days</th><th>Active</th><th>Notes</th><th>Source</th><th></th>
+        <th>Flight</th><th>Route</th><th>Time (local)</th><th>Days</th><th>Active</th><th>Gate</th><th>Term.</th><th>Notes</th><th>Source</th><th></th>
       </tr></thead>
       <tbody>${filtered.map(rowHtml).join("")}</tbody>
     </table>`;
@@ -131,6 +113,8 @@ async function saveRow(routeId, tr) {
   }
   const days = [...tr.querySelectorAll(".cs-day:checked")].map((cb) => Number(cb.value));
   const active = tr.querySelector(".cs-active").checked;
+  const gate = tr.querySelector(".cs-gate").value.trim();
+  const terminal = tr.querySelector(".cs-terminal").value.trim();
   const notes = tr.querySelector(".cs-notes").value.trim();
   const existing = schedulesByRoute.get(routeId);
 
@@ -140,6 +124,8 @@ async function saveRow(routeId, tr) {
     departure_time_local: time + ":00",
     days_of_week: days.length ? days : DAYS,
     active,
+    gate: gate || null,
+    terminal: terminal || null,
     source: existing?.source === "real_world_api" ? "real_world_api" : "manual",
     notes: notes || null,
   };
