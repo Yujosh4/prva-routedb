@@ -1,6 +1,6 @@
 import { supabase } from "./supabase-client.js";
 import { fetchAirportWeather } from "./weather.js";
-import { buildDispatchUrl, generateViaPopup, summarizeOfp } from "./simbrief.js";
+import { buildDispatchUrl, generateViaPopup, summarizeOfp, aircraftOptionsFor } from "./simbrief.js";
 import { renderChartGallery, extractCharts } from "./route-map.js";
 
 const grid = document.getElementById("rnGrid");
@@ -289,12 +289,25 @@ function detailRow(label, value) {
 
 // All field names below (crew, weights, fuel, atc, params.units, etc.) are
 // confirmed against a real generated OFP, not guessed.
+// tlr.takeoff/landing each list every candidate runway at the airport, with
+// v-speeds only populated for the ones actually viable in current wind --
+// the one matching conditions.planned_runway is the one SimBrief actually
+// used, confirmed against a real response (V1/VR/V2 present there, blank
+// on non-viable runways).
+function plannedRunway(phase) {
+  const planned = phase?.conditions?.planned_runway;
+  const runways = phase?.runway || [];
+  return runways.find((r) => r.identifier === planned) || null;
+}
+
 function ofpResultHtml(ofp) {
   const aircraft = ofp?.aircraft?.icaocode || ofp?.aircraft?.name;
   const reg = ofp?.aircraft?.reg;
   const units = ofp?.params?.units === "lbs" ? "lb" : "kg";
   const w = ofp?.weights || {};
   const f = ofp?.fuel || {};
+  const toRwy = plannedRunway(ofp?.tlr?.takeoff);
+  const ldRwy = plannedRunway(ofp?.tlr?.landing);
 
   return `
     <div class="rn-modal-section">
@@ -335,6 +348,24 @@ function ofpResultHtml(ofp) {
       <p style="margin-top:10px; font-size:11px; color:var(--muted);">Est / Max shown where applicable.</p>
     </div>
 
+    ${
+      toRwy?.speeds_v1 || ldRwy
+        ? `<div class="rn-modal-section">
+            <h4>V-Speeds</h4>
+            <dl class="rn-detail-grid">
+              ${detailRow("Takeoff Runway", toRwy?.identifier)}
+              ${detailRow("V1", toRwy?.speeds_v1 ? `${toRwy.speeds_v1} kts` : null)}
+              ${detailRow("VR", toRwy?.speeds_vr ? `${toRwy.speeds_vr} kts` : null)}
+              ${detailRow("V2", toRwy?.speeds_v2 ? `${toRwy.speeds_v2} kts` : null)}
+              ${detailRow(toRwy?.speeds_other_id, toRwy?.speeds_other ? `${toRwy.speeds_other} kts` : null)}
+              ${detailRow("Landing Runway", ldRwy?.identifier)}
+              ${detailRow("Vref", ldRwy?.speeds_vref ? `${ldRwy.speeds_vref} kts` : null)}
+            </dl>
+            <p style="margin-top:10px; font-size:11px; color:var(--muted);">From SimBrief's takeoff/landing performance report for the planned runway.</p>
+          </div>`
+        : ""
+    }
+
     <div class="rn-modal-section">
       <h4>Charts</h4>
       <div id="rnRouteMap"></div>
@@ -342,10 +373,21 @@ function ofpResultHtml(ofp) {
 }
 
 function openSimbriefStep(route) {
+  const options = aircraftOptionsFor(route.aircraft_types);
   const container = document.getElementById("rnSbStep");
   container.innerHTML = `
     <div class="rn-modal-section">
       <h4>Fly This Route via SimBrief</h4>
+      ${
+        options.length > 1
+          ? `<div class="rn-sb-field">
+               <label for="rnSbAircraft">Aircraft</label>
+               <select id="rnSbAircraft">
+                 ${options.map((o, i) => `<option value="${i}">${escapeHtml(o.sourceName)} (${escapeHtml(o.icao)} / ${escapeHtml(o.reg || "no reg")})</option>`).join("")}
+               </select>
+             </div>`
+          : ""
+      }
       <div class="rn-sb-field">
         <label for="rnSbId">Your SimBrief Username</label>
         <input type="text" id="rnSbId" placeholder="e.g. your SimBrief username">
@@ -361,6 +403,7 @@ function openSimbriefStep(route) {
   const status = document.getElementById("rnSbStatus");
   const fileBtn = document.getElementById("rnSbFile");
   const manualBtn = document.getElementById("rnSbFileManual");
+  const aircraftSelect = document.getElementById("rnSbAircraft");
 
   function requireUsername() {
     const sbId = document.getElementById("rnSbId").value.trim();
@@ -372,9 +415,16 @@ function openSimbriefStep(route) {
     return sbId;
   }
 
+  function selectedAircraft() {
+    if (!options.length) return { icao: null, reg: null };
+    const idx = aircraftSelect ? Number(aircraftSelect.value) : 0;
+    return options[idx] || options[0];
+  }
+
   fileBtn.addEventListener("click", async () => {
     const sbId = requireUsername();
     if (!sbId) return;
+    const { icao, reg } = selectedAircraft();
     fileBtn.disabled = true;
     status.textContent = "Opening SimBrief -- log in there if prompted, the plan will generate automatically…";
     status.className = "rn-sb-status";
@@ -383,7 +433,8 @@ function openSimbriefStep(route) {
         {
           origin: route.origin?.icao,
           destination: route.destination?.icao,
-          aircraftTypes: route.aircraft_types,
+          aircraftIcao: icao,
+          reg,
           flightNumber: route.flight_number,
         },
         sbId
@@ -405,10 +456,12 @@ function openSimbriefStep(route) {
   manualBtn.addEventListener("click", () => {
     const sbId = requireUsername();
     if (!sbId) return;
+    const { icao, reg } = selectedAircraft();
     const url = buildDispatchUrl({
       origin: route.origin?.icao,
       destination: route.destination?.icao,
-      aircraftTypes: route.aircraft_types,
+      aircraftIcao: icao,
+      reg,
       flightNumber: route.flight_number,
     });
     window.open(url, "_blank", "noopener");

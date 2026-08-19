@@ -36,17 +36,44 @@ const ICAO_TYPE_MAP = {
   "747-400": "B744",
 };
 
+// PRVA's own fixed tail per ICAO type, as given by Martin. A320 has no
+// livery in Infinite Flight yet, so its entry is a literal placeholder
+// ("RP-C####") rather than a real registration.
+const REGISTRATION_MAP = {
+  A359: "RP-C3506",
+  B77W: "RP-C7777",
+  A321: "RP-C9907",
+  A333: "RP-C8780",
+  A35K: "RP-C3510",
+  DH8D: "RP-C3031",
+  A320: "RP-C####",
+  B744: "RP-C7471",
+  MD11: "N276WA",
+};
+
 function toIcaoType(name) {
   if (!name) return null;
   return ICAO_TYPE_MAP[String(name).trim().toLowerCase()] || null;
 }
 
-export function buildDispatchUrl({ origin, destination, aircraftTypes, flightNumber }) {
+// Builds the list of {sourceName, icao, reg} options a route's aircraft_types
+// array maps to, for a pilot-facing picker. Types with no known ICAO
+// mapping are dropped rather than shown as a broken/unusable option.
+export function aircraftOptionsFor(aircraftTypes) {
+  return (aircraftTypes || [])
+    .map((name) => {
+      const icao = toIcaoType(name);
+      return icao ? { sourceName: name, icao, reg: REGISTRATION_MAP[icao] || null } : null;
+    })
+    .filter(Boolean);
+}
+
+export function buildDispatchUrl({ origin, destination, aircraftIcao, reg, flightNumber }) {
   const params = new URLSearchParams();
   if (origin) params.set("orig", origin);
   if (destination) params.set("dest", destination);
-  const icaoType = (aircraftTypes || []).map(toIcaoType).find(Boolean);
-  if (icaoType) params.set("type", icaoType);
+  if (aircraftIcao) params.set("type", aircraftIcao);
+  if (reg) params.set("reg", reg);
   // Only pass fltnum when the flight number cleanly splits into a letter
   // prefix + digits (e.g. "PR100" -> 100) -- historic entries like
   // "PR102H (A)" don't, so those are left for the pilot to fill in.
@@ -83,8 +110,8 @@ function waitForPopupClose(popup) {
 // Rejects with a clear, user-facing message on every failure path (popup
 // blocked, aircraft type not recognized, auth code request failed) so the
 // caller can show it directly and suggest the manual fallback.
-export async function generateViaPopup({ origin, destination, aircraftTypes, flightNumber }, username) {
-  const type = (aircraftTypes || []).map(toIcaoType).find(Boolean);
+export async function generateViaPopup({ origin, destination, aircraftIcao, reg, flightNumber }, username) {
+  const type = aircraftIcao;
   if (!origin || !destination || !type) {
     throw new Error("Missing origin, destination, or a recognized aircraft type -- try Filing Manually instead.");
   }
@@ -120,7 +147,7 @@ export async function generateViaPopup({ origin, destination, aircraftTypes, fli
   form.action = "https://www.simbrief.com/ofp/ofp.loader.api.php";
   form.target = "SBworker";
   form.style.display = "none";
-  const fields = { orig: origin, dest: destination, type, fltnum, apicode: data.api_code, outputpage: outputpageCalc, timestamp };
+  const fields = { orig: origin, dest: destination, type, reg, fltnum, apicode: data.api_code, outputpage: outputpageCalc, timestamp };
   for (const [name, value] of Object.entries(fields)) {
     if (value === "" || value == null) continue;
     const input = document.createElement("input");
