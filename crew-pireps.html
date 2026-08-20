@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PIREP Review | PRVA Crew Center</title>
+<script>(function(){try{var t=localStorage.getItem("prva-routedb-theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .cs-wrap{ max-width: 1200px; margin: 0 auto; padding: 40px 28px 90px; }
+  .cs-section{ background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 20px; }
+  .cs-summary{ display: flex; gap: 24px; flex-wrap: wrap; align-items: center; }
+  .cs-summary strong{ font-size: 20px; }
+  .cs-table-wrap{ overflow-x: auto; }
+  table.cs-table{ width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.cs-table th, table.cs-table td{ padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+  table.cs-table th{ background: var(--bg-soft); position: sticky; top: 0; }
+  .cs-save-btn{ padding: 5px 10px; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<header class="rn-header">
+  <div class="section-inner">
+    <a href="index.html" class="rn-brand"><img src="assets/img/logo-white.png" alt="PRVA"><span>PIREP Review -- Staff</span></a>
+    <nav>
+      <a href="career-schedule.html">Career Schedule</a>
+      <a href="import.html">Import Routes</a>
+      <a href="#" id="logoutLink">Log Out</a>
+      <button type="button" class="rn-theme-toggle" id="themeToggle">🌙 Dark</button>
+    </nav>
+  </div>
+</header>
+
+<div class="cs-wrap">
+  <h1 style="margin:32px 0 6px; font-size:26px;">PIREP Review</h1>
+  <p style="color:var(--muted); margin-bottom:28px;">
+    Pending pilot reports, newest last. PIREPs claiming a bonus multiplier always need individual review --
+    they're excluded from both bulk actions below, since a green logbook match only proves the flight happened,
+    not that the claimed bonus reason is legitimate.
+  </p>
+
+  <div class="cs-section cs-summary" id="pvSummary">Loading…</div>
+
+  <div class="cs-section">
+    <h3 style="margin-bottom:10px; font-size:15px;">Bulk Actions</h3>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:14px;">
+      Verify PIREPs re-checks each pending PIREP against the pilot's real Infinite Flight logbook and colors every
+      row below green (verified) or red (unverified) -- run it first so the bulk buttons have something to act on.
+    </p>
+    <div class="rn-row" style="display:flex; gap:10px; flex-wrap:wrap;">
+      <button type="button" class="btn btn-outline" id="pvVerifyBtn">Verify PIREPs</button>
+      <button type="button" class="btn btn-primary" id="pvApproveAllBtn">Approve All Valid</button>
+      <button type="button" class="btn btn-outline" id="pvRejectAllBtn">Reject All Invalid</button>
+    </div>
+    <div class="rn-sb-status" id="pvBulkStatus"></div>
+  </div>
+
+  <div class="cs-section">
+    <h3 style="margin-bottom:10px; font-size:15px;">Pending PIREPs</h3>
+    <div class="cs-table-wrap" id="pvTableWrap">Loading…</div>
+  </div>
+</div>
+
+<script type="module" src="js/crew-pireps.js"></script>
+</body>
+</html>

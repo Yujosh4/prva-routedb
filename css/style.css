@@ -597,6 +597,16 @@ dd.cal-urgency-departed{ color: var(--muted); }
 dd.cal-status-delayed{ color: #8a5a00; font-weight: 700; }
 dd.cal-status-cancelled{ color: var(--red-700); font-weight: 700; }
 
+/* ---------- PIREP review queue ---------- */
+/* Same fixed-light-background reasoning as .cal-status-* above -- these
+   badges/row tints need to stay readable regardless of the page's theme. */
+.pirep-badge{ display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.pirep-badge-verified{ background: #eafaf0; color: #1a7f4b; border: 1px solid #1a7f4b55; }
+.pirep-badge-unverified{ background: #ffe1e1; color: var(--red-700); border: 1px solid var(--red-500); }
+.pirep-badge-multiplier{ background: #fff4e0; color: #8a5a00; border: 1px solid #e6a532; }
+tr.pirep-row-verified{ background: #eafaf0; }
+tr.pirep-row-unverified{ background: #fdf1f2; }
+
 @media (max-width: 640px){
   .cal-grid{ grid-template-columns: repeat(7, minmax(38px, 1fr)); gap: 4px; }
   .cal-day{ min-height: 60px; padding: 4px; }
