@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pilot Login | PRVA Crew Center</title>
+<meta name="description" content="Sign up or log in to PRVA Crew Center to claim flights and file PIREPs.">
+<script>(function(){try{var t=localStorage.getItem("prva-routedb-theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .auth-wrap{ min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--gradient-hero); padding: 24px; }
+  .auth-card{ background: var(--surface); border-radius: var(--radius-xl); padding: 36px; width: 100%; max-width: 420px; box-shadow: var(--shadow-soft); }
+  .auth-card h1{ font-size: 24px; margin-bottom: 6px; }
+  .auth-card p.auth-sub{ color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .auth-tabs{ display: flex; gap: 8px; margin-bottom: 24px; }
+  .auth-tabs button{ flex: 1; padding: 10px; border-radius: var(--radius-md); border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .auth-tabs button[data-active="true"]{ background: var(--navy-900); color: var(--white); border-color: var(--navy-900); }
+  .auth-form{ display: none; }
+  .auth-form.active{ display: block; }
+  .auth-hint{ font-size: 12px; color: var(--muted); margin-top: -10px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<div class="auth-wrap">
+  <div class="auth-card">
+    <h1>Crew Center</h1>
+    <p class="auth-sub">Claim scheduled flights, file PIREPs, and track your progress.</p>
+
+    <div class="auth-tabs">
+      <button type="button" data-tab="login" data-active="true">Log In</button>
+      <button type="button" data-tab="signup">Sign Up</button>
+    </div>
+
+    <form id="loginForm" class="auth-form active" novalidate>
+      <div class="rn-sb-field">
+        <label for="loginEmail">Email</label>
+        <input type="text" id="loginEmail" autocomplete="email">
+      </div>
+      <div class="rn-sb-field">
+        <label for="loginPassword">Password</label>
+        <input type="password" id="loginPassword" autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;">Log In</button>
+      <div class="rn-sb-status" id="loginStatus"></div>
+    </form>
+
+    <form id="signupForm" class="auth-form" novalidate>
+      <div class="rn-sb-field">
+        <label for="signupName">Preferred Name</label>
+        <input type="text" id="signupName" autocomplete="name" placeholder="What should we call you?">
+      </div>
+      <div class="rn-sb-field">
+        <label for="signupIfc">Infinite Flight Community Username</label>
+        <input type="text" id="signupIfc" autocomplete="off" placeholder="e.g. San_juan">
+      </div>
+      <p class="auth-hint">Used to match your PIREPs against your real Infinite Flight logbook -- make sure it's exactly right.</p>
+      <div class="rn-sb-field">
+        <label for="signupEmail">Email</label>
+        <input type="text" id="signupEmail" autocomplete="email">
+      </div>
+      <div class="rn-sb-field">
+        <label for="signupPassword">Password</label>
+        <input type="password" id="signupPassword" autocomplete="new-password">
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;">Create Account</button>
+      <div class="rn-sb-status" id="signupStatus"></div>
+    </form>
+  </div>
+</div>
+
+<script type="module" src="js/crew-auth.js"></script>
+</body>
+</html>
