@@ -16,6 +16,7 @@ import { ofpDetailHtml } from "./ofp-detail.js";
 import { airportLocalDateKey } from "./career-time.js";
 import { supabase } from "./supabase-client.js";
 import { occasionalIcaoCodes, isAircraftAvailableToday, isDomesticRoute } from "./aircraft-rarity.js";
+import { FIXED_RATES, SHOP_RATES, EVENT_RATES, tierPerkRateForRank, multiplierLabel } from "./crew-multipliers.js";
 
 function escapeHtml(str) {
   return String(str ?? "").replace(/[&<>"']/g, (c) => ({
@@ -72,18 +73,14 @@ async function refreshClaimSection(route) {
 
   if (existing) {
     const isMine = currentPilot && existing.pilot_id === currentPilot.id;
-    section.innerHTML = `
-      <h4>Claim This Flight</h4>
-      <p class="rn-sb-status" style="margin-top:0;">
-        ${isMine ? "You've claimed this flight." : `Claimed by ${escapeHtml(existing.pilots?.display_name || "another pilot")}.`}
-      </p>
-      ${isMine ? `<button type="button" class="btn btn-outline" data-release-claim="${escapeHtml(existing.id)}">Release Claim</button>` : ""}
-    `;
-    section.querySelector("[data-release-claim]")?.addEventListener("click", async (e) => {
-      e.target.disabled = true;
-      await supabase.from("flight_claims").update({ status: "expired" }).eq("id", existing.id);
-      refreshClaimSection(route);
-    });
+    if (!isMine) {
+      section.innerHTML = `
+        <h4>Claim This Flight</h4>
+        <p class="rn-sb-status" style="margin-top:0;">Claimed by ${escapeHtml(existing.pilots?.display_name || "another pilot")}.</p>
+      `;
+      return;
+    }
+    await renderMyClaim(route, existing);
     return;
   }
 
@@ -118,6 +115,152 @@ async function refreshClaimSection(route) {
     }
     refreshClaimSection(route);
   });
+}
+
+// Renders the signed-in pilot's own claim: if a PIREP was already filed
+// against it, shows its status (pending / approved / rejected) instead of
+// the filing form -- one PIREP per claim for v1, matching the plan's
+// claim_id link (a rejected PIREP needs staff to sort out, not a silent
+// resubmit). Otherwise shows Release Claim + the filing form.
+async function renderMyClaim(route, claim) {
+  const section = document.getElementById("rnClaimSection");
+  const { currentPilot } = route.claimContext;
+
+  const { data: pirep } = await supabase
+    .from("pireps")
+    .select("*")
+    .eq("claim_id", claim.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (pirep) {
+    section.innerHTML = pirepStatusHtml(pirep);
+    return;
+  }
+
+  // Tier perk rate comes from the pilot's own rank, not a pilot choice --
+  // and it's capped at once per calendar week, so check recent usage
+  // before offering it as an option.
+  const tierPerkRate = tierPerkRateForRank(currentPilot.rankName);
+  let tierPerkUsedThisWeek = false;
+  if (tierPerkRate) {
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentTierUse } = await supabase
+      .from("pireps")
+      .select("id")
+      .eq("pilot_id", currentPilot.id)
+      .eq("multiplier_type", "tier_perk")
+      .gte("created_at", weekAgo)
+      .limit(1);
+    tierPerkUsedThisWeek = !!recentTierUse?.length;
+  }
+
+  section.innerHTML = `
+    <h4>Claim This Flight</h4>
+    <p class="rn-sb-status" style="margin-top:0;">You've claimed this flight.</p>
+    <button type="button" class="btn btn-outline" id="rnReleaseClaim" style="margin-bottom:18px;">Release Claim</button>
+    <h4>File PIREP</h4>
+    <div class="rn-sb-field">
+      <label for="rnPirepMultiplier">Multiplier</label>
+      <select id="rnPirepMultiplier">
+        <option value="none">${escapeHtml(multiplierLabel("none", FIXED_RATES.none))}</option>
+        <option value="rotw">${escapeHtml(multiplierLabel("rotw", FIXED_RATES.rotw))}</option>
+        ${tierPerkRate ? `<option value="tier_perk" ${tierPerkUsedThisWeek ? "disabled" : ""}>${tierPerkUsedThisWeek ? "Rank perk (already used this week)" : escapeHtml(multiplierLabel("tier_perk", tierPerkRate))}</option>` : ""}
+        ${SHOP_RATES.map((r) => `<option value="shop:${r}">${escapeHtml(multiplierLabel("shop", r))}</option>`).join("")}
+        ${EVENT_RATES.map((r) => `<option value="event:${r}">${escapeHtml(multiplierLabel("event", r))}</option>`).join("")}
+      </select>
+    </div>
+    <div class="rn-sb-field" id="rnPirepRemarksField" style="display:none;">
+      <label for="rnPirepRemarks">Remarks (required for a bonus -- explain why)</label>
+      <textarea id="rnPirepRemarks" rows="2"></textarea>
+    </div>
+    <button type="button" class="btn btn-primary" id="rnFilePirep">File PIREP</button>
+    <div class="rn-sb-status" id="rnPirepStatus"></div>
+  `;
+
+  document.getElementById("rnReleaseClaim").addEventListener("click", async (e) => {
+    e.target.disabled = true;
+    await supabase.from("flight_claims").update({ status: "expired" }).eq("id", claim.id);
+    refreshClaimSection(route);
+  });
+
+  const multiplierSelect = document.getElementById("rnPirepMultiplier");
+  const remarksField = document.getElementById("rnPirepRemarksField");
+  multiplierSelect.addEventListener("change", () => {
+    remarksField.style.display = multiplierSelect.value === "none" ? "none" : "block";
+  });
+
+  document.getElementById("rnFilePirep").addEventListener("click", async (e) => {
+    const fileStatus = document.getElementById("rnPirepStatus");
+    const [type, rawValue] = multiplierSelect.value.split(":");
+    const remarks = document.getElementById("rnPirepRemarks").value.trim();
+    if (type !== "none" && !remarks) {
+      fileStatus.textContent = "Explain your bonus claim in the remarks field.";
+      fileStatus.className = "rn-sb-status error";
+      return;
+    }
+
+    e.target.disabled = true;
+    fileStatus.textContent = "Checking your Infinite Flight logbook…";
+    fileStatus.className = "rn-sb-status";
+
+    const multiplierValue = type === "none" ? FIXED_RATES.none
+      : type === "rotw" ? FIXED_RATES.rotw
+      : type === "tier_perk" ? tierPerkRate
+      : Number(rawValue);
+
+    let verification = { verified: false, matchedFlightId: null, loggedMinutes: null };
+    if (currentPilot.infinite_flight_user_id) {
+      try {
+        const { data, error: verifyErr } = await supabase.functions.invoke("pirep-verify", {
+          body: {
+            infiniteFlightUserId: currentPilot.infinite_flight_user_id,
+            originIcao: route.origin?.icao,
+            destinationIcao: route.destination?.icao,
+            flightDate: route.claimContext.flightDate,
+          },
+        });
+        if (!verifyErr && data) verification = data;
+      } catch (err) {
+        console.error("[route-modal] pirep-verify failed", err);
+      }
+    }
+
+    const { error: insertErr } = await supabase.from("pireps").insert({
+      claim_id: claim.id,
+      pilot_id: currentPilot.id,
+      if_logbook_flight_id: verification.matchedFlightId,
+      logged_flight_minutes: verification.loggedMinutes,
+      verification_status: verification.verified ? "verified" : "unverified",
+      multiplier_type: type,
+      multiplier_value: multiplierValue,
+      remarks: remarks || null,
+    });
+
+    if (insertErr) {
+      fileStatus.textContent = "Couldn't file your PIREP -- try again in a moment.";
+      fileStatus.className = "rn-sb-status error";
+      e.target.disabled = false;
+      return;
+    }
+    refreshClaimSection(route);
+  });
+}
+
+function pirepStatusHtml(pirep) {
+  const reviewLine = pirep.review_status === "approved"
+    ? `<p class="rn-sb-status success" style="margin-top:0;">PIREP approved -- ${pirep.hours_awarded != null ? `${pirep.hours_awarded} hours awarded.` : "hours awarded."}</p>`
+    : pirep.review_status === "rejected"
+    ? `<p class="rn-sb-status error" style="margin-top:0;">PIREP rejected.</p>`
+    : `<p class="rn-sb-status" style="margin-top:0;">PIREP filed -- pending staff review.</p>`;
+  const verifyLine = pirep.verification_status === "verified"
+    ? `<p style="font-size:12px; color:var(--muted); margin-top:4px;">Verified against your Infinite Flight logbook.</p>`
+    : `<p style="font-size:12px; color:var(--muted); margin-top:4px;">No matching logbook entry found automatically -- staff will review manually.</p>`;
+  const multiplierLine = pirep.multiplier_type !== "none"
+    ? `<p style="font-size:12px; color:var(--muted); margin-top:4px;">Claimed: ${escapeHtml(multiplierLabel(pirep.multiplier_type, pirep.multiplier_value))}</p>`
+    : "";
+  return `<h4>Claim This Flight</h4>${reviewLine}${verifyLine}${multiplierLine}`;
 }
 
 function wxCardHtml(icao, label, wx, loading) {

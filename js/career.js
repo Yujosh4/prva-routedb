@@ -17,8 +17,15 @@ async function loadCurrentPilot() {
   if (!supabase) return;
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return;
-  const { data } = await supabase.from("pilots").select("id, display_name").eq("id", session.user.id).maybeSingle();
-  if (data) currentPilot = data;
+  // rank name is needed for the tier-perk multiplier rate (js/crew-
+  // multipliers.js keys off it), infinite_flight_user_id for PIREP
+  // logbook verification.
+  const { data } = await supabase
+    .from("pilots")
+    .select("id, display_name, infinite_flight_user_id, ranks(name)")
+    .eq("id", session.user.id)
+    .maybeSingle();
+  if (data) currentPilot = { ...data, rankName: data.ranks?.name };
 }
 
 const grid = document.getElementById("rnGrid");
