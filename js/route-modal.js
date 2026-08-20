@@ -14,6 +14,7 @@ import { buildDispatchUrl, generateViaPopup, summarizeOfp, aircraftOptionsFor } 
 import { renderChartGallery, extractCharts } from "./route-map.js";
 import { ofpDetailHtml } from "./ofp-detail.js";
 import { airportLocalDateKey } from "./career-time.js";
+import { supabase } from "./supabase-client.js";
 import { occasionalIcaoCodes, isAircraftAvailableToday, isDomesticRoute } from "./aircraft-rarity.js";
 
 function escapeHtml(str) {
@@ -40,6 +41,83 @@ function runwayNotesHtml(origin, destination) {
       <h4>Known Runway Notes</h4>
       ${notes.map((n) => `<p style="font-size:13px; color:var(--muted); margin-bottom:6px;"><strong>${escapeHtml(n.icao)}:</strong> ${escapeHtml(n.text)}</p>`).join("")}
     </div>`;
+}
+
+// Loads (or reloads, after a claim/release action) who -- if anyone --
+// currently holds the claim for this specific schedule_id + flight_date,
+// and renders the appropriate state: claim button, "you've claimed this"
+// + release button, someone else's name (read-only), or a login prompt
+// for a signed-out visitor. Re-fetches from the DB rather than trusting
+// local state after every action, since the unique index on
+// (schedule_id, flight_date) is what actually enforces one-pilot-per-
+// flight -- a concurrent claim from another pilot needs to show up here,
+// not just be assumed away.
+async function refreshClaimSection(route) {
+  const section = document.getElementById("rnClaimSection");
+  if (!section || !supabase) return;
+  const { scheduleId, flightDate, currentPilot } = route.claimContext;
+
+  const { data: existing, error } = await supabase
+    .from("flight_claims")
+    .select("id, pilot_id, pilots(display_name)")
+    .eq("schedule_id", scheduleId)
+    .eq("flight_date", flightDate)
+    .neq("status", "expired")
+    .maybeSingle();
+
+  if (error) {
+    section.innerHTML = `<h4>Claim This Flight</h4><p class="rn-sb-status error" style="margin-top:0;">Couldn't load claim status.</p>`;
+    return;
+  }
+
+  if (existing) {
+    const isMine = currentPilot && existing.pilot_id === currentPilot.id;
+    section.innerHTML = `
+      <h4>Claim This Flight</h4>
+      <p class="rn-sb-status" style="margin-top:0;">
+        ${isMine ? "You've claimed this flight." : `Claimed by ${escapeHtml(existing.pilots?.display_name || "another pilot")}.`}
+      </p>
+      ${isMine ? `<button type="button" class="btn btn-outline" data-release-claim="${escapeHtml(existing.id)}">Release Claim</button>` : ""}
+    `;
+    section.querySelector("[data-release-claim]")?.addEventListener("click", async (e) => {
+      e.target.disabled = true;
+      await supabase.from("flight_claims").update({ status: "expired" }).eq("id", existing.id);
+      refreshClaimSection(route);
+    });
+    return;
+  }
+
+  if (!currentPilot) {
+    section.innerHTML = `<h4>Claim This Flight</h4><p class="rn-sb-status" style="margin-top:0;">
+      <a href="crew-auth.html" style="color:var(--red-600); text-decoration:underline;">Log in to Crew Center</a> to claim this flight.
+    </p>`;
+    return;
+  }
+
+  section.innerHTML = `
+    <h4>Claim This Flight</h4>
+    <button type="button" class="btn btn-primary" data-claim="${escapeHtml(scheduleId)}">Claim This Flight</button>
+    <div class="rn-sb-status" id="rnClaimStatus"></div>
+  `;
+  section.querySelector("[data-claim]")?.addEventListener("click", async (e) => {
+    e.target.disabled = true;
+    const { error: insertErr } = await supabase.from("flight_claims").insert({
+      pilot_id: currentPilot.id,
+      schedule_id: scheduleId,
+      flight_date: flightDate,
+    });
+    if (insertErr) {
+      // Most likely the unique index -- someone else claimed it between
+      // this modal opening and the click. Re-fetching shows the real
+      // current state either way, not just this specific error message.
+      const status = document.getElementById("rnClaimStatus");
+      if (status) {
+        status.textContent = "Couldn't claim this flight -- it may have just been claimed by someone else.";
+        status.className = "rn-sb-status error";
+      }
+    }
+    refreshClaimSection(route);
+  });
 }
 
 function wxCardHtml(icao, label, wx, loading) {
@@ -257,6 +335,8 @@ export function initRouteModal() {
 
       ${runwayNotesHtml(o, d)}
 
+      ${route.claimContext ? `<div class="rn-modal-section" id="rnClaimSection"><h4>Claim This Flight</h4><p class="rn-sb-status" style="margin-top:0;">Loading…</p></div>` : ""}
+
       ${
         route.unavailableReason
           ? `<div class="rn-modal-section"><p class="rn-sb-status" style="margin-top:0;">${escapeHtml(route.unavailableReason)}</p></div>`
@@ -272,6 +352,8 @@ export function initRouteModal() {
       const wxGrid = document.getElementById("rnWxGrid");
       if (wxGrid) wxGrid.innerHTML = wxCardHtml(o.icao, "origin", ow) + wxCardHtml(d.icao, "destination", dw);
     });
+
+    if (route.claimContext) refreshClaimSection(route);
 
     modalBody.querySelector("[data-fly]")?.addEventListener("click", () => openSimbriefStep(route));
   }

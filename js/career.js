@@ -7,6 +7,20 @@ import { initThemeToggle } from "./theme.js";
 
 initThemeToggle();
 
+// The logged-in pilot (if any), used to gate/label the claim UI in the
+// route details modal. null until loadCurrentPilot() resolves, and stays
+// null forever for a signed-out visitor -- Career Mode itself is still
+// fully browsable without an account, only claiming needs one.
+let currentPilot = null;
+
+async function loadCurrentPilot() {
+  if (!supabase) return;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+  const { data } = await supabase.from("pilots").select("id, display_name").eq("id", session.user.id).maybeSingle();
+  if (data) currentPilot = data;
+}
+
 const grid = document.getElementById("rnGrid");
 const filterCount = document.getElementById("rnFilterCount");
 const searchInput = document.getElementById("rnSearch");
@@ -353,7 +367,7 @@ function visibleDayEntries(source, weekday, dateKey, todayCell, isPastDay) {
     .sort((a, b) => a.departure_time_local.localeCompare(b.departure_time_local));
 }
 
-function openEntryDetails(entry) {
+function openEntryDetails(entry, dateKey) {
   // The shared modal (route-modal.js) works on plain route objects -- flatten
   // this schedule entry into that shape, adding a careerInfo block for the
   // extra schedule-specific fields it doesn't otherwise know about.
@@ -375,7 +389,11 @@ function openEntryDetails(entry) {
     ${minutes !== null ? `<div><dt>Countdown</dt><dd class="${urgencyClass(minutes)}">${escapeHtml(formatCountdown(minutes))} (incl. 5min buffer)</dd></div>` : ""}
     ${entry.min_rank ? `<div><dt>Minimum Rank</dt><dd>${escapeHtml(entry.min_rank.name)}</dd></div>` : ""}
   `;
-  openModal({ ...entry.route, airline: entry.airline, careerInfo, unavailableReason });
+  // Only entries with a known calendar date can be claimed -- see the
+  // grid click handler's comment for why list view's "Other Days" cards
+  // don't have one. No dateKey just means no claim section shows up.
+  const claimContext = dateKey ? { scheduleId: entry.id, flightDate: dateKey, currentPilot } : null;
+  openModal({ ...entry.route, airline: entry.airline, careerInfo, unavailableReason, claimContext });
 }
 
 // ---------- List view ----------
@@ -432,7 +450,15 @@ grid.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-details]");
   if (!btn) return;
   const entry = allEntries.find((x) => String(x.id) === btn.dataset.details);
-  if (entry) openEntryDetails(entry);
+  if (!entry) return;
+  // List cards aren't tied to one calendar date the way a calendar cell or
+  // day-list entry is -- an entry only has an unambiguous date to claim
+  // when it's actually operating today (at its own origin airport's local
+  // clock, matching how list view already groups "Upcoming Today" vs
+  // "Other Days"). "Other Days" entries get no claim date here; claiming
+  // those means switching to Calendar view and picking the actual date.
+  const dateKey = entryCountdownMinutes(entry) !== null ? airportLocalDateKey(entry.route.origin?.icao) : null;
+  openEntryDetails(entry, dateKey);
 });
 
 // ---------- Calendar view ----------
@@ -522,7 +548,7 @@ function renderCalendar() {
               else if (isPastDay) titleParts.push("Departed");
               else if (minutes !== null) titleParts.push(formatCountdown(minutes));
               const title = titleParts.join(" -- ");
-              return `<span class="cal-flight-chip ${cls}" data-entry="${escapeHtml(e.id)}" title="${escapeHtml(title)}">${escapeHtml(e.route.flight_number)} ${escapeHtml(formatTime12h(e.departure_time_local))}</span>`;
+              return `<span class="cal-flight-chip ${cls}" data-entry="${escapeHtml(e.id)}" data-date="${escapeHtml(dateKey)}" title="${escapeHtml(title)}">${escapeHtml(e.route.flight_number)} ${escapeHtml(formatTime12h(e.departure_time_local))}</span>`;
             })
             .join("")}
           ${overflow > 0 ? `<span class="cal-day-more" data-daylist="${weekday}" data-date="${dateKey}">+${overflow} more</span>` : ""}
@@ -536,7 +562,7 @@ function renderCalendar() {
     chip.addEventListener("click", (e) => {
       e.stopPropagation();
       const entry = allEntries.find((x) => String(x.id) === chip.dataset.entry);
-      if (entry) openEntryDetails(entry);
+      if (entry) openEntryDetails(entry, chip.dataset.date);
     });
   });
 
@@ -625,7 +651,7 @@ function openDayListModal(dayLabel, entries, dateKey) {
     btn.addEventListener("click", () => {
       const entry = allEntries.find((x) => String(x.id) === btn.dataset.daylistEntry);
       closeDayListModal();
-      if (entry) openEntryDetails(entry);
+      if (entry) openEntryDetails(entry, dateKey);
     });
   });
 }
@@ -686,6 +712,7 @@ clearFiltersBtn.addEventListener("click", () => {
 });
 
 (async function init() {
+  await loadCurrentPilot();
   const entries = await loadSchedule();
   if (entries === null) {
     allEntries = [];
